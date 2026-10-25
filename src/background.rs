@@ -1,6 +1,7 @@
 use crate::{Result, err, n};
-use image::{Rgba, RgbaImage, imageops};
+use image::{GenericImage, GrayImage, ImageBuffer, Luma, Pixel, Rgba, RgbaImage, imageops};
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub const PRESETS: [&str; 20] = [
     "#6366f1", "#ec4899", "#06b6d4", "#f97316", "#22c55e", "#8b5cf6", "#ef4444", "#0ea5e9",
@@ -59,6 +60,93 @@ fn rgb(c: u32) -> [f64; 3] {
         (c & 255) as f64,
     ]
 }
+fn threads() -> u32 {
+    std::thread::available_parallelism().map_or(1, |n| n.get() as u32)
+}
+// Per-pixel pure fill split into row bands across threads; identical to RgbaImage::from_fn.
+fn fill<P: Pixel<Subpixel = u8>>(
+    w: u32,
+    h: u32,
+    f: impl Fn(u32, u32) -> P + Sync,
+) -> ImageBuffer<P, Vec<u8>> {
+    let mut img = ImageBuffer::new(w, h);
+    let rows = h.div_ceil(threads()).max(1) as usize;
+    let (f, w, c) = (&f, w as usize, P::CHANNEL_COUNT as usize);
+    std::thread::scope(|s| {
+        for (i, band) in img.chunks_mut(rows * w * c).enumerate() {
+            s.spawn(move || {
+                for (j, p) in band.chunks_exact_mut(c).enumerate() {
+                    let k = i * rows * w + j;
+                    p.copy_from_slice(f((k % w) as u32, (k / w) as u32).channels());
+                }
+            });
+        }
+    });
+    img
+}
+// At least the radius of the kernel imageops::blur builds for `sigma`.
+pub fn blur_halo(sigma: f32) -> u32 {
+    let s = if sigma == 0. { 0.8 } else { sigma };
+    ((s - 0.8) / 0.3 + 3.).max(3.) as u32
+}
+// imageops::blur on tiles with a halo of real pixels: its separable clamp-edge kernel computes
+// every output sample with the same arithmetic, so the result is bit-identical, but parallel and
+// cache-friendly.
+pub fn blur<P: Pixel<Subpixel = u8> + Send + Sync + 'static>(
+    img: &ImageBuffer<P, Vec<u8>>,
+    sigma: f32,
+) -> ImageBuffer<P, Vec<u8>> {
+    let (w, h) = img.dimensions();
+    let halo = blur_halo(sigma);
+    let tile = (halo * 8).max(512);
+    if w <= tile && h <= tile {
+        return imageops::blur(img, sigma);
+    }
+    let tiles: Vec<_> = (0..h)
+        .step_by(tile as usize)
+        .flat_map(|y| (0..w).step_by(tile as usize).map(move |x| (x, y)))
+        .collect();
+    let next = AtomicUsize::new(0);
+    let out = std::sync::Mutex::new(ImageBuffer::new(w, h));
+    std::thread::scope(|s| {
+        for _ in 0..threads() {
+            s.spawn(|| {
+                while let Some(&(x, y)) = tiles.get(next.fetch_add(1, Ordering::Relaxed)) {
+                    let (l, t) = (x.saturating_sub(halo), y.saturating_sub(halo));
+                    let (r, d) = ((x + tile + halo).min(w), (y + tile + halo).min(h));
+                    let b = imageops::blur(
+                        &imageops::crop_imm(img, l, t, r - l, d - t).to_image(),
+                        sigma,
+                    );
+                    let core =
+                        imageops::crop_imm(&b, x - l, y - t, tile.min(w - x), tile.min(h - y));
+                    out.lock().unwrap().copy_from(&*core, x, y).unwrap();
+                }
+            });
+        }
+    });
+    out.into_inner().unwrap()
+}
+// imageops::overlay (per-pixel Rgba::blend) in parallel row bands.
+fn overlay(bottom: &mut RgbaImage, top: &RgbaImage, x: i64, y: i64) {
+    let w = bottom.width() as usize;
+    let rows = bottom.height().div_ceil(threads()).max(1) as usize;
+    std::thread::scope(|s| {
+        for (i, band) in bottom.chunks_mut(rows * w * 4).enumerate() {
+            s.spawn(move || {
+                for (j, p) in band.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                    let k = i * rows * w + j;
+                    let (tx, ty) = ((k % w) as i64 - x, (k / w) as i64 - y);
+                    if tx >= 0 && ty >= 0 && tx < top.width() as i64 && ty < top.height() as i64 {
+                        let mut q = Rgba(*p);
+                        q.blend(top.get_pixel(tx as u32, ty as u32));
+                        *p = q.0;
+                    }
+                }
+            });
+        }
+    });
+}
 pub fn gradient(preset: usize, w: u32, h: u32) -> RgbaImage {
     let index = preset % 20;
     let palette = PALETTES[index];
@@ -69,7 +157,7 @@ pub fn gradient(preset: usize, w: u32, h: u32) -> RgbaImage {
         (0.98, 0.97),
         (0.02, 0.95),
     ];
-    RgbaImage::from_fn(w, h, |x, y| {
+    fill(w, h, |x, y| {
         let mut u = x as f64 / (w - 1).max(1) as f64;
         let mut v = y as f64 / (h - 1).max(1) as f64;
         if index == 12 || index == 5 || index == 18 {
@@ -248,7 +336,7 @@ pub fn compose(img: &RgbaImage, op: &Value) -> Result<(RgbaImage, Value)> {
             } else {
                 let a = parse_color(PRESETS[p])?;
                 let b = parse_color("#111827")?;
-                RgbaImage::from_fn(w, h, |_, y| {
+                fill(w, h, |_, y| {
                     let t = y as f64 / (h - 1).max(1) as f64;
                     Rgba(std::array::from_fn(|i| {
                         (a[i] as f64 * (1. - t) + b[i] as f64 * t) as u8
@@ -279,7 +367,7 @@ pub fn compose(img: &RgbaImage, op: &Value) -> Result<(RgbaImage, Value)> {
     };
     let blur = n(op, "blur", if mode == "blurred" { 24. } else { 0. }).clamp(0., 100.) as f32;
     if blur > 0. {
-        bg = imageops::blur(&bg, blur);
+        bg = self::blur(&bg, blur);
     }
     let alignment = op["alignment"].as_str().unwrap_or("center");
     let mut x = (w - frame_w) / 2;
@@ -330,22 +418,37 @@ pub fn compose(img: &RgbaImage, op: &Value) -> Result<(RgbaImage, Value)> {
         imageops::overlay(&mut frame, &screenshot, inset as i64, inset as i64);
     }
     if op["shadow"].as_bool().unwrap_or(true) {
+        // Only the alpha of the black shadow varies, and it is zero beyond the mask plus the blur
+        // radius: blur that alpha region alone; the composite is identical to a full-canvas blur.
         let strength = n(op, "shadow_strength", 0.35).clamp(0., 1.);
-        let mut shadow = RgbaImage::new(w, h);
-        let mut mask = frame.clone();
-        for p in mask.pixels_mut() {
-            *p = Rgba([0, 0, 0, (p[3] as f64 * strength) as u8]);
-        }
-        imageops::overlay(
-            &mut shadow,
-            &mask,
-            x as i64 + n(op, "shadow_offset_x", 0.).clamp(-100., 100.) as i64,
-            y as i64 + offset,
+        let sigma = n(op, "shadow_blur", 18.).clamp(0., 100.) as f32;
+        let sx = x as i64 + n(op, "shadow_offset_x", 0.).clamp(-100., 100.) as i64;
+        let sy = y as i64 + offset;
+        let halo = blur_halo(sigma) as i64;
+        let (x0, y0) = (
+            (sx - halo).clamp(0, w as i64),
+            (sy - halo).clamp(0, h as i64),
         );
-        let shadow = imageops::blur(&shadow, n(op, "shadow_blur", 18.).clamp(0., 100.) as f32);
-        imageops::overlay(&mut bg, &shadow, 0, 0);
+        let x1 = (sx + frame_w as i64 + halo).clamp(0, w as i64);
+        let y1 = (sy + frame_h as i64 + halo).clamp(0, h as i64);
+        if x1 > x0 && y1 > y0 {
+            let alpha: GrayImage = fill((x1 - x0) as u32, (y1 - y0) as u32, |px, py| {
+                let (mx, my) = (px as i64 + x0 - sx, py as i64 + y0 - sy);
+                let mut p = Rgba([0, 0, 0, 0]);
+                if (0..frame_w as i64).contains(&mx) && (0..frame_h as i64).contains(&my) {
+                    let a = frame.get_pixel(mx as u32, my as u32)[3];
+                    p.blend(&Rgba([0, 0, 0, (a as f64 * strength) as u8]));
+                }
+                Luma([p[3]])
+            });
+            let alpha = self::blur(&alpha, sigma);
+            let shadow = fill(alpha.width(), alpha.height(), |px, py| {
+                Rgba([0, 0, 0, alpha.get_pixel(px, py)[0]])
+            });
+            overlay(&mut bg, &shadow, x0, y0);
+        }
     }
-    imageops::overlay(&mut bg, &frame, x as i64, y as i64);
+    overlay(&mut bg, &frame, x as i64, y as i64);
     let mut rect = json!({"x":x+inset,"y":y+inset,"w":iw,"h":ih});
     // Always expose the source domain for v2; the editor uses it for object handles and new strokes.
     if op["gradient_version"].as_u64() == Some(2) {
@@ -392,6 +495,26 @@ mod tests {
                 .is_ok()
             );
         }
+    }
+    #[test]
+    fn tiled_blur_matches_imageops_blur() {
+        let img = RgbaImage::from_fn(1100, 600, |x, y| {
+            Rgba([
+                (x * 7 % 256) as u8,
+                (y * 3 % 256) as u8,
+                ((x ^ y) % 256) as u8,
+                (x % 200) as u8,
+            ])
+        });
+        for sigma in [0., 5.5, 18.] {
+            assert_eq!(
+                blur(&img, sigma),
+                imageops::blur(&img, sigma),
+                "sigma {sigma}"
+            );
+        }
+        let gray = GrayImage::from_fn(1100, 530, |x, y| Luma([((x * y) % 251) as u8]));
+        assert_eq!(blur(&gray, 3.), imageops::blur(&gray, 3.));
     }
     #[test]
     fn twenty_gradients_have_distinct_real_pixels() {

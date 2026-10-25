@@ -4,6 +4,7 @@ CaptureSelector 1.0 CaptureSelector.qml
 Editor 1.0 Editor.qml
 IconButton 1.0 IconButton.qml
 Icon 1.0 Icon.qml
+LiveScene 1.0 LiveScene.qml
 Main 1.0 Main.qml
 QuickAccess 1.0 QuickAccess.qml
 Retention 1.0 Retention.qml

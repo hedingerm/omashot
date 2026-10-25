@@ -64,7 +64,8 @@ pub fn capture(args: &[String]) -> Result<Value> {
     let p = unique(".frozen");
     with_desktop_hidden(&c, || {
         std::thread::sleep(std::time::Duration::from_secs_f64(delay));
-        let mut argv = strings(&["-s", &scale.to_string()]);
+        // Uncompressed: this temporary file is only shown and cropped, so encoding speed matters, not size.
+        let mut argv = strings(&["-l", "0", "-s", &scale.to_string()]);
         if cursor {
             argv.push("-c".into());
         }

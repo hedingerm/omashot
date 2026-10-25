@@ -104,15 +104,21 @@ Item {
             root.status = "Finish or cancel scrolling capture first";
             return;
         }
+        captureTimer.interval = hideDelay();
         opened = false;
         quickOpened = false;
         capturing = true;
         pendingMode = mode;
         captureTimer.start();
     }
+    // Our own surfaces need a moment to unmap before grim runs; skip the wait when none is shown.
+    function hideDelay() {
+        return opened || quickOpened || selector.opened || (pins.length && !scrollSurface.active) ? 350 : 0;
+    }
     function beginScrolling(geometry) {
         if (scrollSurface.active)
             return;
+        captureTimer.interval = hideDelay();
         opened = false;
         quickOpened = false;
         capturing = true;
@@ -152,10 +158,14 @@ Item {
         let target = path || current;
         if (target) {
             pinCounter++;
+            let known = captures.concat(quickCaptures).find(function (c) {
+                return c.path === target;
+            }) || {};
             pins = pins.concat([
                 {
                     path: target,
-                    id: pinCounter
+                    id: pinCounter,
+                    width: known.width || 0
                 }
             ]);
         }
@@ -281,6 +291,7 @@ Item {
         interval: 350
         onTriggered: {
             if (worker.running) {
+                interval = 50;
                 restart();
                 return;
             }
@@ -380,7 +391,9 @@ Item {
                 root.cursor = !!data.cursor;
                 Qt.callLater(root.refresh);
             } else if (root.job === "history") {
-                root.captures = data;
+                // Keep the same model when nothing changed so history tiles are not recreated.
+                if (JSON.stringify(data) !== JSON.stringify(root.captures))
+                    root.captures = data;
                 root.quickCaptures = root.quickCaptures.filter(function (c) {
                     return data.some(function (h) {
                         return h.path === c.path;
@@ -472,6 +485,24 @@ Item {
         }
         function measureFrames(ms: int): void {
             Theme.measure(Math.max(100, Math.min(10000, ms)), "probe");
+        }
+        // Editor latency probe for live tests: geometry of a named item, tool/operation setup, and per-input stats.
+        function editorLatency(): string {
+            return JSON.stringify(editor.latencyStats());
+        }
+        function editorLatencyReset(): void {
+            editor.probeSamples = {};
+            editor.probeInputs = [];
+            editor.probing = true;
+        }
+        function editorRect(name: string): string {
+            return JSON.stringify(editor.probeRect(name));
+        }
+        // `operations` is base64 JSON: qs ipc splits plain string arguments.
+        function editorSetup(tool: string, operations: string): void {
+            editor.tool = tool;
+            if (operations)
+                editor.commit(JSON.parse(Qt.atob(operations)), "draw");
         }
         function annotate(): void {
             root.beginEditing();
@@ -781,7 +812,6 @@ Item {
                                         fillMode: Image.PreserveAspectFit
                                         asynchronous: true
                                         sourceSize.width: 360
-                                        cache: false
                                     }
                                     RowLayout {
                                         Label {
@@ -1465,12 +1495,13 @@ Item {
             readonly property int index: root.pins.findIndex(function (p) {
                 return p.id === modelData.id;
             })
-            visible: !root.capturing && !scrollSurface.active
+            visible: loaded && !root.capturing && !scrollSurface.active
+            property bool loaded: false
             property bool clickThrough: false
             property real imageOpacity: 1
             property real offsetX: 0
             property real offsetY: 0
-            readonly property real aspect: photo.sourceSize.width > 0 ? photo.sourceSize.height / photo.sourceSize.width : 0.75
+            readonly property real aspect: photo.implicitWidth > 0 ? photo.implicitHeight / photo.implicitWidth : 0.75
             mask: clickThrough ? emptyRegion : null
             Region {
                 id: emptyRegion
@@ -1501,6 +1532,12 @@ Item {
                     source: "file://" + pinWindow.modelData.path
                     fillMode: Image.PreserveAspectFit
                     visible: false
+                    // Decode off the GUI thread at the pin's pixel size (stepped, never upscaled); keep the old frame while zooming reloads it.
+                    asynchronous: true
+                    retainWhileLoading: true
+                    sourceSize.width: Math.ceil(pinWindow.implicitWidth * (pinWindow.screen ? pinWindow.screen.devicePixelRatio : 1) / 256) * 256
+                    onStatusChanged: if (status === Image.Ready)
+                        pinWindow.loaded = true
                 }
                 Rectangle {
                     id: roundedMask
@@ -1557,7 +1594,7 @@ Item {
                     color: Theme.alpha(Theme.window, 0.85)
                     Text {
                         anchors.centerIn: parent
-                        text: Math.round(pinWindow.implicitWidth / Math.max(1, photo.sourceSize.width) * 100) + "%"
+                        text: Math.round(pinWindow.implicitWidth / Math.max(1, pinWindow.modelData.width || photo.implicitWidth) * 100) + "%"
                         font.pixelSize: 10
                         color: Theme.text
                     }

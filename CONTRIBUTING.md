@@ -45,7 +45,7 @@ omarchy plugin validate ./plugin
 Then run the tests relevant to your change (after `cargo build`):
 
 - Headless: `tests/render-regression.py`, `tests/history-service.py`, `tests/editor-*-smoke.py`, `tests/theme-smoke.py` (offscreen Qt, needs Quickshell).
-- Live Wayland session: `tests/ui-smoke.py`, `tests/capture-*-smoke.py`, `tests/isolated-window-smoke.py`, `tests/scroll-smoke.py`, `tests/theme-live-smoke.py` (loads the plugin the way omarchy-shell does and checks the theme fade holds frame pacing). These open real windows, and `ui-smoke.py` overwrites your clipboard.
+- Live Wayland session: `tests/ui-smoke.py`, `tests/capture-*-smoke.py`, `tests/isolated-window-smoke.py`, `tests/scroll-smoke.py`, `tests/theme-live-smoke.py` (loads the plugin the way omarchy-shell does and checks the theme fade holds frame pacing), `tests/live-scene-fidelity.py` (the editor's live GPU preview matches the exact backend render) and `tests/editor-latency-live.py` (input-to-display latency of drawing, moving, resizing, undo/redo and sliders, driven by a real virtual pointer; `--shell` measures the installed plugin, `--max-ms N` fails above N ms at p90). These open real windows, `editor-latency-live.py` moves your pointer, and `ui-smoke.py` overwrites your clipboard.
 
 ## Theme colors
 

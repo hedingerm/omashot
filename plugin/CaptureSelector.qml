@@ -190,7 +190,8 @@ Item {
             readonly property real leftEdge: root.selectionX - monitorX
             readonly property real topEdge: root.selectionY - monitorY
             screen: modelData
-            visible: root.opened && !!root.snapshot.path && !!monitor
+            // Decode the frozen frame off the GUI thread; map the surface once it can show the frame.
+            visible: root.opened && frozenFrame.status === Image.Ready && !!monitor
             anchors {
                 top: true
                 bottom: true
@@ -217,12 +218,14 @@ Item {
                     root.key(event);
                 }
                 Image {
+                    id: frozenFrame
                     x: root.originX - surface.monitorX
                     y: root.originY - surface.monitorY
                     width: Number(root.snapshot.width || 0) / root.imageScale
                     height: Number(root.snapshot.height || 0) / root.imageScale
                     source: root.snapshot.path ? "file://" + root.snapshot.path : ""
                     fillMode: Image.Stretch
+                    asynchronous: true
                     cache: true
                     smooth: false
                 }
@@ -366,6 +369,7 @@ Item {
                         height: Number(root.snapshot.height || 0) * magnifier.zoom
                         source: root.snapshot.path ? "file://" + root.snapshot.path : ""
                         fillMode: Image.Stretch
+                        asynchronous: true
                         cache: true
                         smooth: false
                     }

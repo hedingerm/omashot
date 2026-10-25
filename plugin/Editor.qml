@@ -67,20 +67,73 @@ Rectangle {
     property string previewPath: ""
     property int revision: 0
     property int displayRevision: -1
-    readonly property bool previewReady: displayRevision === revision && picture.status === Image.Ready && !!previewPath
+    readonly property bool previewReady: displayRevision === revision && picture.status === Image.Ready && !!previewPath && picture.loaded === previewPath
     property int renderRevision: -1
     property string renderSource: ""
     property bool previewRender: true
     property bool savePending: false
     property bool initialized: false
-    property real renderedWidth: sourceImage.sourceSize.width
-    property real renderedHeight: sourceImage.sourceSize.height
-    property var contentRect: ({
-            x: 0,
-            y: 0,
+    // The live scene draws every edit in the next frame; the exact backend render replaces it once it matches `revision`.
+    property var exactRect: ({
             w: sourceImage.sourceSize.width,
-            h: sourceImage.sourceSize.height
+            h: sourceImage.sourceSize.height,
+            content: {
+                x: 0,
+                y: 0,
+                w: sourceImage.sourceSize.width,
+                h: sourceImage.sourceSize.height
+            }
         })
+    property var draft: null
+    property var balance: null
+    property var baseCache: ({})
+    readonly property string prefixKey: editableStart ? JSON.stringify(operations.slice(0, editableStart)) : ""
+    readonly property var sourceBase: sourceImage.status === Image.Ready ? {
+        path: basePath,
+        width: sourceImage.sourceSize.width,
+        height: sourceImage.sourceSize.height
+    } : null
+    // Until the newest transform's flattened base is rendered, the stage before it is drawn through that transform.
+    readonly property var liveStage: {
+        if (!editableStart || baseCache[prefixKey])
+            return {
+                start: editableStart,
+                base: editableStart ? baseCache[prefixKey] : sourceBase,
+                transform: null
+            };
+        var last = editableStart - 1, start = 0;
+        for (var i = 0; i < last; i++)
+            if (["crop", "resize", "rotate", "flip"].indexOf(operations[i].type) >= 0)
+                start = i + 1;
+        var framed = operations.slice(start, last).some(function (o) {
+            return o.type === "background";
+        });
+        return {
+            start: start,
+            base: framed ? null : start ? baseCache[JSON.stringify(operations.slice(0, start))] || null : sourceBase,
+            transform: operations[last]
+        };
+    }
+    readonly property var liveBase: liveStage.base
+    readonly property bool liveReady: !!liveBase && live.ready
+    readonly property bool liveShown: liveReady && (!previewReady || !!draft)
+    readonly property var liveOperations: {
+        var list = [];
+        for (var i = editableStart; i < operations.length; i++)
+            if (operations[i].type !== "background" && !(textEditing && i === editingTextIndex))
+                list.push(operations[i]);
+        return draft ? list.concat([draft]) : list;
+    }
+    readonly property var liveBackground: {
+        var found = null;
+        for (var i = editableStart; i < operations.length; i++)
+            if (operations[i].type === "background")
+                found = operations[i];
+        return found;
+    }
+    readonly property real renderedWidth: liveReady ? live.layout.w : exactRect.w
+    readonly property real renderedHeight: liveReady ? live.layout.h : exactRect.h
+    readonly property var contentRect: liveReady ? live.layout.content : exactRect.content
     property real zoom: 0
     property string lastChange: ""
     property real lastChangeAt: 0
@@ -94,13 +147,118 @@ Rectangle {
     signal closeRequested
     signal historyRequested
 
+    // Input-to-display latency of edits (`qs ipc call omashot editorLatency`): each input waits for the first swapped frame showing it.
+    property var probeInputs: []
+    property var probeSamples: ({})
+    property int strokeSeq: 0
+    property bool probing: false
+    function noteInput(kind) {
+        if (!probing)
+            return;
+        probeInputs.push({
+            kind: kind,
+            at: Date.now(),
+            rev: kind === "draw-move" ? strokeSeq : revision
+        });
+    }
+    function visibleRevision() {
+        return liveShown ? revision : picture.status === Image.Ready && picture.loaded === previewPath ? displayRevision : -1;
+    }
+    function latencyStats() {
+        var out = {};
+        for (var kind in probeSamples) {
+            var g = probeSamples[kind].slice().sort(function (a, b) {
+                return a - b;
+            });
+            out[kind] = {
+                n: g.length,
+                medianMs: g[g.length >> 1],
+                p90Ms: g[Math.floor(g.length * .9)],
+                worstMs: g[g.length - 1]
+            };
+        }
+        out.operations = operations.length;
+        out.pending = probeInputs.length;
+        out.idle = previewReady && !renderProcess.running;
+        out.state = [liveReady, live.ready, !!liveBase, previewReady, liveShown, revision, displayRevision].join();
+        return out;
+    }
+    function probeItem(name, item) {
+        item = item || root;
+        if (item.objectName === name)
+            return item;
+        var kids = item.children || [];
+        for (var i = 0; i < kids.length; i++) {
+            var found = probeItem(name, kids[i]);
+            if (found)
+                return found;
+        }
+        return null;
+    }
+    function probeRect(name) {
+        var item = name === "image" ? imageArea : probeItem(name);
+        if (!item)
+            return null;
+        var p = item.mapToItem(null, 0, 0);
+        return {
+            x: p.x,
+            y: p.y,
+            w: item.width,
+            h: item.height,
+            sx: name === "image" ? imageArea.sx : 0,
+            sourceX: name === "image" ? imageArea.sourceX : 0,
+            sourceY: name === "image" ? imageArea.sourceY : 0
+        };
+    }
+    // An input counts once the state it produced was synchronized into a frame, and is recorded when that frame swaps.
+    Connections {
+        target: root.Window.window
+        function onAfterAnimating() {
+            var visible = root.visibleRevision(), stroke = root.liveShown ? root.strokeSeq : -1;
+            root.probeInputs.forEach(function (input) {
+                if (!input.synced && (input.kind === "draw-move" ? stroke : visible) >= input.rev)
+                    input.synced = 1;
+            });
+        }
+        // Queued from the render thread in order, so the swap after this sync shows the marked state.
+        function onAfterSynchronizing() {
+            root.probeInputs.forEach(function (input) {
+                if (input.synced === 1)
+                    input.synced = 2;
+            });
+        }
+        function onFrameSwapped() {
+            if (!root.probeInputs.length)
+                return;
+            var now = Date.now(), keep = [];
+            root.probeInputs.forEach(function (input) {
+                if (input.synced === 2 || now - input.at > 5000)
+                    root.probeSamples[input.kind] = (root.probeSamples[input.kind] || []).concat([now - input.at]);
+                else
+                    keep.push(input);
+            });
+            root.probeInputs = keep;
+        }
+    }
+
     onSourcePathChanged: resetSource()
+    readonly property bool interacting: !!gestureBefore || !!draft || backgroundPanel.pressedSliders > 0
+    // A preview render of an outdated state is wasted work; stop it and render the new state when idle.
+    property bool renderAborted: false
+    function abortPreview() {
+        if (renderProcess.running && previewRender && !savePending) {
+            renderAborted = true;
+            renderProcess.running = false;
+        }
+    }
     onOperationsChanged: {
+        abortPreview();
         revision++;
         if (initialized && !gestureBefore)
             previewTimer.restart();
     }
     onBasePathChanged: {
+        baseCache = {};
         revision++;
         if (initialized)
             previewTimer.restart();
@@ -119,6 +277,9 @@ Rectangle {
         undoStack = [];
         undone = [];
         previewPath = "";
+        queuedAuxiliary = null;
+        balance = null;
+        draft = null;
         previewOnly = false;
         displayRevision = -1;
         lastChange = "";
@@ -162,14 +323,16 @@ Rectangle {
         var list = operations.slice();
         list[selectedIndex] = op;
         operations = list;
-        if (!renderProcess.running)
-            startRender(true);
+        noteInput(gestureKind);
     }
+    property string gestureKind: "move"
     function moveGesture(x, y) {
+        gestureKind = "move";
         if (gestureOriginal)
             setGesture(Geometry.moved(gestureOriginal, x - gestureX, y - gestureY));
     }
     function resizeGesture(key, x, y) {
+        gestureKind = "resize";
         if (gestureOriginal)
             setGesture(Geometry.resized(gestureOriginal, key, x, y));
     }
@@ -390,6 +553,7 @@ Rectangle {
         if (op)
             next.push(op);
         commit(next, "background");
+        noteInput("background");
     }
     function syncBackground() {
         backgroundPanel.restore(backgroundOperation());
@@ -408,6 +572,7 @@ Rectangle {
         undone = undone.concat([snapshot()]);
         operations = undoStack[undoStack.length - 1];
         undoStack = undoStack.slice(0, -1);
+        noteInput("undo");
         lastChange = "";
         selectedIndex = -1;
         syncBackground();
@@ -427,6 +592,7 @@ Rectangle {
         undoStack = undoStack.concat([snapshot()]);
         operations = undone[undone.length - 1];
         undone = undone.slice(0, -1);
+        noteInput("redo");
         lastChange = "";
         selectedIndex = -1;
         syncBackground();
@@ -485,7 +651,8 @@ Rectangle {
     Timer {
         id: previewTimer
         interval: 160
-        onTriggered: root.startRender(true)
+        // Exact renders compete for CPU with the frames of an ongoing drag; wait until it ends.
+        onTriggered: root.interacting ? restart() : root.startRender(true)
     }
     function render(preview) {
         if (!preview && textEditing)
@@ -513,9 +680,9 @@ Rectangle {
         }
         renderRevision = revision;
         renderSource = sourcePath;
-        renderProcess.command = [backend, "render", basePath, JSON.stringify(previewRender && textEditing && editingTextIndex >= 0 ? operations.filter(function (o, i) {
+        renderProcess.command = (previewRender ? ["nice", "-n", "10"] : []).concat([backend, "render", basePath, JSON.stringify(previewRender && textEditing && editingTextIndex >= 0 ? operations.filter(function (o, i) {
                 return i !== editingTextIndex;
-            }) : operations), previewRender ? "--preview" : "-"];
+            }) : operations), previewRender ? "--preview" : "-"]);
         renderProcess.running = true;
     }
     Process {
@@ -533,24 +700,50 @@ Rectangle {
             onStreamFinished: renderProcess.errors = text
         }
         onExited: function (code) {
+            if (root.renderAborted) {
+                root.renderAborted = false;
+                if (root.savePending)
+                    Qt.callLater(function () {
+                        root.startRender(false);
+                    });
+                else
+                    previewTimer.restart();
+                return;
+            }
             try {
                 var value = JSON.parse(result);
                 if (code !== 0 || !value.path)
                     throw new Error(value.error || errors || "Could not render image");
                 if (root.renderSource === root.sourcePath) {
                     if (root.previewRender) {
-                        if (root.renderRevision === root.revision || root.gestureBefore) {
-                            root.previewPath = value.path;
-                            root.renderedWidth = value.width;
-                            root.renderedHeight = value.height;
-                            root.contentRect = value.contentRect || {
+                        if (root.renderRevision === root.revision) {
+                            var rect = value.contentRect || {
                                 x: 0,
                                 y: 0,
                                 w: value.width,
                                 h: value.height
                             };
+                            // Auto-balance trims depend on pixels; the live layout reuses the backend's latest bounds.
+                            if (rect.sourceW !== undefined && root.liveBackground)
+                                root.balance = {
+                                    x: rect.sourceX,
+                                    y: rect.sourceY,
+                                    w: rect.sourceW,
+                                    h: rect.sourceH
+                                };
+                            root.exactRect = {
+                                w: value.width,
+                                h: value.height,
+                                content: rect
+                            };
+                            root.previewPath = value.path;
                             root.displayRevision = root.renderRevision;
                             root.status = "All changes previewed";
+                            if (root.queuedAuxiliary)
+                                Qt.callLater(function () {
+                                    if (root.queuedAuxiliary)
+                                        root.auxiliary(root.queuedAuxiliary.args, root.queuedAuxiliary.message);
+                                });
                         }
                     } else {
                         root.status = "Saved edited image";
@@ -558,16 +751,13 @@ Rectangle {
                     }
                 }
             } catch (e) {
+                root.queuedAuxiliary = null;
                 root.status = String(e);
                 root.error(root.status);
             }
             if (root.savePending)
                 Qt.callLater(function () {
                     root.startRender(false);
-                });
-            else if (root.gestureBefore && root.renderRevision !== root.revision)
-                Qt.callLater(function () {
-                    root.startRender(true);
                 });
             else if (root.renderRevision !== root.revision || root.renderSource !== root.sourcePath)
                 previewTimer.restart();
@@ -578,26 +768,80 @@ Rectangle {
         visible: false
         source: root.basePath ? "file://" + root.basePath : ""
         onStatusChanged: {
-            if (status === Image.Ready && !root.previewPath) {
-                root.renderedWidth = sourceSize.width;
-                root.renderedHeight = sourceSize.height;
-                root.contentRect = {
-                    x: 0,
-                    y: 0,
+            if (status === Image.Ready && !root.previewPath)
+                root.exactRect = {
                     w: sourceSize.width,
-                    h: sourceSize.height
+                    h: sourceSize.height,
+                    content: {
+                        x: 0,
+                        y: 0,
+                        w: sourceSize.width,
+                        h: sourceSize.height
+                    }
                 };
+        }
+    }
+    // Transforms (crop, resize, rotate, flip) flatten everything before them; the live scene draws on that exact prefix.
+    onPrefixKeyChanged: requestBase()
+    function requestBase() {
+        if (!prefixKey || baseCache[prefixKey] !== undefined || baseProcess.running || !sourcePath)
+            return;
+        baseProcess.key = prefixKey;
+        baseProcess.source = basePath;
+        baseProcess.command = ["nice", "-n", "10", backend, "render", basePath, prefixKey, "--preview"];
+        baseProcess.running = true;
+    }
+    Process {
+        id: baseProcess
+        property string key: ""
+        property string source: ""
+        property string result: ""
+        stdout: StdioCollector {
+            onStreamFinished: baseProcess.result = text
+        }
+        onExited: function (code) {
+            if (source !== root.basePath) {
+                root.requestBase();
+                return;
             }
+            var cache = Object.assign({}, root.baseCache), value = null;
+            try {
+                value = JSON.parse(result);
+            } catch (e) {}
+            cache[key] = code === 0 && value && value.path ? {
+                path: value.path,
+                width: value.width,
+                height: value.height
+            } : null;
+            root.baseCache = cache;
+            root.requestBase();
         }
     }
     function exportPath() {
         return previewPath || sourcePath;
     }
+    // Copy/export act on the exact render; when it is still catching up they run as soon as it arrives.
+    // A null argument stands for that render's path.
+    property var queuedAuxiliary: null
     function auxiliary(args, message) {
-        if (auxiliaryProcess.running || displayRevision !== revision)
+        if (auxiliaryProcess.running) {
+            queuedAuxiliary = null;
             return;
+        }
+        if (displayRevision !== revision) {
+            queuedAuxiliary = {
+                args: args,
+                message: message
+            };
+            previewTimer.stop();
+            startRender(true);
+            return;
+        }
+        queuedAuxiliary = null;
         auxiliaryProcess.kind = "";
-        auxiliaryProcess.command = [backend].concat(args);
+        auxiliaryProcess.command = [backend].concat(args.map(function (a) {
+            return a === null ? exportPath() : a;
+        }));
         auxiliaryProcess.message = message;
         auxiliaryProcess.running = true;
     }
@@ -646,7 +890,7 @@ Rectangle {
         fileMode: FileDialog.SaveFile
         nameFilters: ["PNG image (*.png)", "JPEG image (*.jpg)", "WebP image (*.webp)"]
         defaultSuffix: "png"
-        onAccepted: root.auxiliary(["export", root.exportPath(), decodeURIComponent(selectedFile.toString().replace(/^file:\/\//, ""))], "Screenshot exported")
+        onAccepted: root.auxiliary(["export", null, decodeURIComponent(selectedFile.toString().replace(/^file:\/\//, ""))], "Screenshot exported")
     }
     ColorDialog {
         id: cropColorDialog
@@ -1127,20 +1371,12 @@ Rectangle {
                         Item {
                             width: canvasScroll.contentWidth
                             height: canvasScroll.contentHeight
-                            Canvas {
+                            // Transparency checkerboard as a tiled image: repainting a Canvas on every resize stalled slider drags.
+                            Image {
                                 anchors.fill: picture
-                                onPaint: {
-                                    let c = getContext("2d");
-                                    c.fillStyle = "#f0f1f3";
-                                    c.fillRect(0, 0, width, height);
-                                    c.fillStyle = "#d3d6dc";
-                                    for (let y = 0; y < height; y += 12)
-                                        for (let x = 0; x < width; x += 12)
-                                            if ((x / 12 + y / 12) % 2 === 0)
-                                                c.fillRect(x, y, 12, 12);
-                                }
-                                onWidthChanged: requestPaint()
-                                onHeightChanged: requestPaint()
+                                fillMode: Image.Tile
+                                smooth: false
+                                source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><rect width='24' height='24' fill='%23f0f1f3'/><path d='M0 0h12v12H0zM12 12h12v12H12z' fill='%23d3d6dc'/></svg>"
                             }
                             Image {
                                 id: picture
@@ -1151,6 +1387,26 @@ Rectangle {
                                 fillMode: Image.Stretch
                                 cache: false
                                 asynchronous: true
+                                visible: !root.liveShown
+                                property string loaded: ""
+                                onStatusChanged: loaded = status === Image.Ready ? root.previewPath : ""
+                            }
+                            LiveScene {
+                                id: live
+                                anchors.centerIn: parent
+                                visible: root.liveShown
+                                zoom: canvasScroll.imageScale
+                                baseSource: root.liveBase ? "file://" + root.liveBase.path : ""
+                                baseWidth: root.liveBase ? root.liveBase.width : 1
+                                baseHeight: root.liveBase ? root.liveBase.height : 1
+                                operations: root.liveOperations
+                                transformOp: root.liveStage.transform
+                                preOperations: root.liveStage.transform ? root.operations.slice(root.liveStage.start, root.editableStart - 1).filter(function (o) {
+                                    return o.type !== "background";
+                                }) : []
+                                background: root.liveBackground
+                                balance: root.balance
+                                gradients: backgroundPanel.gradients
                             }
                             Item {
                                 id: imageArea
@@ -1162,71 +1418,10 @@ Rectangle {
                                 readonly property real sourceY: root.contentRect.sourceY || 0
                                 readonly property real sx: width / Math.max(1, root.contentRect.sourceW || sourceImage.sourceSize.width)
                                 readonly property real sy: height / Math.max(1, root.contentRect.sourceH || sourceImage.sourceSize.height)
-                                Canvas {
-                                    id: markup
-                                    anchors.fill: parent
-                                    onPaint: {
-                                        var c = getContext("2d");
-                                        c.reset();
-                                        if (!drawArea.pressed)
-                                            return;
-                                        var o = drawArea.operation(), x = (o.x - imageArea.sourceX) * imageArea.sx, y = (o.y - imageArea.sourceY) * imageArea.sy, w = o.w * imageArea.sx, h = o.h * imageArea.sy, x2 = (o.x2 - imageArea.sourceX) * imageArea.sx, y2 = (o.y2 - imageArea.sourceY) * imageArea.sy;
-                                        c.strokeStyle = root.ink;
-                                        c.fillStyle = root.ink;
-                                        c.lineWidth = Math.max(1, root.strokeWidth * imageArea.sx);
-                                        c.lineCap = "round";
-                                        if (o.type === "line" || o.type === "arrow") {
-                                            c.beginPath();
-                                            c.moveTo(x, y);
-                                            c.lineTo(x2, y2);
-                                            c.stroke();
-                                            if (o.type === "arrow") {
-                                                var a = Math.atan2(y2 - y, x2 - x), s = Math.max(10, c.lineWidth * 4);
-                                                c.beginPath();
-                                                c.moveTo(x2, y2);
-                                                c.lineTo(x2 - s * Math.cos(a - 0.45), y2 - s * Math.sin(a - 0.45));
-                                                c.lineTo(x2 - s * Math.cos(a + 0.45), y2 - s * Math.sin(a + 0.45));
-                                                c.closePath();
-                                                c.fill();
-                                            }
-                                        } else if (o.type === "ellipse") {
-                                            c.beginPath();
-                                            c.ellipse(x, y, w, h);
-                                            c.stroke();
-                                        } else if (o.type === "freehand") {
-                                            c.beginPath();
-                                            for (var i = 0; i < o.points.length; i++) {
-                                                var p = o.points[i];
-                                                if (i)
-                                                    c.lineTo((p.x - imageArea.sourceX) * imageArea.sx, (p.y - imageArea.sourceY) * imageArea.sy);
-                                                else
-                                                    c.moveTo((p.x - imageArea.sourceX) * imageArea.sx, (p.y - imageArea.sourceY) * imageArea.sy);
-                                            }
-                                            c.stroke();
-                                        } else if (o.type === "filled") {
-                                            c.fillRect(x, y, w, h);
-                                        } else if (o.type === "rectangle" || o.type === "crop") {
-                                            if (o.type === "crop") {
-                                                c.strokeStyle = "#ffffff";
-                                                c.setLineDash([6, 4]);
-                                            }
-                                            c.strokeRect(x, y, w, h);
-                                        } else if (o.type === "highlight") {
-                                            c.globalAlpha = .35;
-                                            c.fillRect(x, y, w, h);
-                                        } else if (o.type === "redact" || o.type === "pixelate") {
-                                            c.fillStyle = o.type === "redact" ? "#000000" : "#6b728a";
-                                            c.fillRect(x, y, w, h);
-                                        } else if (o.type === "spotlight") {
-                                            c.fillStyle = "#ffffff";
-                                            c.strokeRect(x, y, w, h);
-                                        }
-                                    }
-                                }
                                 MouseArea {
                                     id: drawArea
                                     anchors.fill: parent
-                                    enabled: !root.busy && !root.cropEditing && !root.textEditing && root.tool !== "select" && root.displayRevision === root.revision && picture.status === Image.Ready
+                                    enabled: !root.busy && !root.cropEditing && !root.textEditing && root.tool !== "select" && (root.liveReady || root.previewReady)
                                     cursorShape: Qt.CrossCursor
                                     property real startX: 0
                                     property real startY: 0
@@ -1266,7 +1461,8 @@ Rectangle {
                                                 y: startY
                                             }
                                         ];
-                                        markup.requestPaint();
+                                        if (root.tool !== "text" && root.tool !== "step")
+                                            root.draft = operation();
                                     }
                                     onPositionChanged: function (mouse) {
                                         if (pressed) {
@@ -1279,11 +1475,15 @@ Rectangle {
                                                         y: endY
                                                     }
                                                 ]);
-                                            markup.requestPaint();
+                                            root.strokeSeq++;
+                                            if (root.tool !== "text" && root.tool !== "step")
+                                                root.draft = operation();
+                                            root.noteInput("draw-move");
                                         }
                                     }
                                     onReleased: {
                                         var op = operation();
+                                        root.draft = null;
                                         if (root.tool === "text" || root.tool === "step") {
                                             op.x = startX;
                                             op.y = startY;
@@ -1293,18 +1493,15 @@ Rectangle {
                                                 }).length + 1);
                                             else {
                                                 root.editText(startX, startY, -1);
-                                                markup.requestPaint();
                                                 return;
                                             }
-                                        } else if (op.w < 2 && op.h < 2) {
-                                            markup.requestPaint();
+                                        } else if (op.w < 2 && op.h < 2)
                                             return;
-                                        }
                                         root.add(op);
+                                        root.noteInput("draw-commit");
                                         root.selectedIndex = root.operations.length - 1 - (root.backgroundOperation() ? 1 : 0);
-                                        markup.requestPaint();
                                     }
-                                    onCanceled: markup.requestPaint()
+                                    onCanceled: root.draft = null
                                 }
                                 MouseArea {
                                     id: selectionArea
@@ -1566,11 +1763,11 @@ Rectangle {
                         height: 26
                         radius: 13
                         color: Theme.accentSoft
-                        visible: renderProcess.running
+                        visible: renderProcess.running && !root.previewRender
                         Text {
                             id: renderLabel
                             anchors.centerIn: parent
-                            text: root.previewRender ? "Updating preview…" : "Saving…"
+                            text: "Saving…"
                             font.pixelSize: 10
                             color: Theme.text
                         }
@@ -1668,7 +1865,20 @@ Rectangle {
                         color: dragMouse.containsMouse ? Theme.raised : Theme.surface
                         border.color: Theme.border
                         readonly property bool ready: !root.busy && root.previewReady
-                        opacity: ready ? 1 : .6
+                        property bool lagging: false
+                        onReadyChanged: {
+                            lagging = false;
+                            if (ready)
+                                lagTimer.stop();
+                            else
+                                lagTimer.restart();
+                        }
+                        Timer {
+                            id: lagTimer
+                            interval: 800
+                            onTriggered: dragPill.lagging = !dragPill.ready
+                        }
+                        opacity: lagging ? .6 : 1
                         Row {
                             anchors.centerIn: parent
                             spacing: 6
@@ -1678,7 +1888,7 @@ Rectangle {
                                 color: Theme.textMuted
                             }
                             Text {
-                                text: dragPill.ready ? "Drag Me" : "Updating…"
+                                text: dragPill.lagging ? "Updating…" : "Drag Me"
                                 color: Theme.textSoft
                                 font.pixelSize: 10
                             }
@@ -1721,15 +1931,15 @@ Rectangle {
                     text: "Copy edited image"
                     size: 29
                     iconSize: 17
-                    enabled: !root.busy && root.displayRevision === root.revision
-                    onClicked: root.auxiliary(["copy", root.exportPath()], "Edited image copied")
+                    enabled: !root.busy
+                    onClicked: root.auxiliary(["copy", null], "Edited image copied")
                 }
                 IconButton {
                     iconName: "save"
                     text: "Save as…"
                     size: 29
                     iconSize: 17
-                    enabled: !root.busy && root.displayRevision === root.revision
+                    enabled: !root.busy
                     onClicked: exportDialog.open()
                 }
                 IconButton {

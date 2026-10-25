@@ -1,7 +1,7 @@
 mod background;
 mod snapshot;
 mod storage;
-use image::RgbaImage;
+use image::{DynamicImage, ImageFormat, RgbaImage};
 use serde_json::{Value, json};
 use std::{
     env, fs,
@@ -255,7 +255,8 @@ fn geometry(mode: &str) -> Result<Option<String>> {
     }
 }
 fn capture_to(path: &Path, geo: Option<String>, cursor: bool) -> Result<()> {
-    let mut args = vec![];
+    // Level 1 keeps identical pixels at a fraction of grim's default level-6 encoding time.
+    let mut args = vec!["-l".into(), "1".into()];
     if cursor {
         args.push("-c".into());
     }
@@ -321,17 +322,27 @@ fn raster_op(img: &mut RgbaImage, op: &Value) -> Result<bool> {
             }
         }
     } else {
-        let old = if typ == "blur" {
-            image::imageops::blur(img, n(op, "strength", 12.).clamp(1., 80.) as f32)
+        // Blur only the selection plus the kernel radius (clamped at image edges like a full blur).
+        let (old, ox, oy) = if typ == "blur" {
+            let sigma = n(op, "strength", 12.).clamp(1., 80.) as f32;
+            let halo = background::blur_halo(sigma);
+            let (ox, oy) = (x.saturating_sub(halo), y.saturating_sub(halo));
+            let (ow, oh) = (
+                (x + w + halo).min(img.width()) - ox,
+                (y + h + halo).min(img.height()) - oy,
+            );
+            let area = image::imageops::crop_imm(img, ox, oy, ow, oh).to_image();
+            (background::blur(&area, sigma), ox, oy)
         } else {
-            img.clone()
+            (img.clone(), 0, 0)
         };
+        let ink = background::parse_color(op["color"].as_str().unwrap_or("#ffe629"));
         for py in y..y + h {
             for px in x..x + w {
                 let p = img.get_pixel_mut(px, py);
                 match typ {
                     "redact" => *p = image::Rgba([0, 0, 0, 255]),
-                    "blur" => *p = *old.get_pixel(px, py),
+                    "blur" => *p = *old.get_pixel(px - ox, py - oy),
                     "highlight" => {
                         let radius = n(op, "radius", h as f64 / 2.).clamp(0., w.min(h) as f64 / 2.);
                         let lx = px as f64 + 0.5 - x as f64;
@@ -341,8 +352,7 @@ fn raster_op(img: &mut RgbaImage, op: &Value) -> Result<bool> {
                         if dx.hypot(dy) > radius {
                             continue;
                         }
-                        let ink =
-                            background::parse_color(op["color"].as_str().unwrap_or("#ffe629"))?;
+                        let ink = ink.as_ref().map_err(|e| err(&e.to_string()))?;
                         let alpha = n(op, "opacity", 0.35).clamp(0., 1.) * ink[3] as f64 / 255.;
                         for k in 0..3 {
                             p[k] =
@@ -362,6 +372,44 @@ fn raster_op(img: &mut RgbaImage, op: &Value) -> Result<bool> {
     }
     Ok(true)
 }
+fn magick(args: &[String], input: &[u8]) -> Result<Vec<u8>> {
+    let mut child = Command::new("magick")
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdin = child.stdin.take().unwrap();
+    // Feed stdin from a thread so large images cannot deadlock against a full stdout pipe.
+    let out = std::thread::scope(|s| {
+        s.spawn(move || stdin.write_all(input));
+        child.wait_with_output()
+    })?;
+    if !out.status.success() {
+        return Err(err(&format!(
+            "magick: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    Ok(out.stdout)
+}
+fn encode_png(img: &DynamicImage) -> Result<Vec<u8>> {
+    use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+    let mut out = Vec::new();
+    img.write_with_encoder(PngEncoder::new_with_quality(
+        &mut out,
+        CompressionType::Uncompressed,
+        FilterType::NoFilter,
+    ))?;
+    Ok(out)
+}
+// Current image as RGBA, decoding magick's last PNG if that is the newest state.
+fn take_rgba(img: &mut DynamicImage, png: &mut Option<Vec<u8>>) -> Result<RgbaImage> {
+    if let Some(b) = png.take() {
+        *img = image::load_from_memory_with_format(&b, ImageFormat::Png)?;
+    }
+    Ok(std::mem::replace(img, DynamicImage::new_rgba8(0, 0)).into_rgba8())
+}
 fn render(input: &Path, ops: &Value, output: &Path) -> Result<Option<Value>> {
     let ops = ops
         .as_array()
@@ -369,302 +417,317 @@ fn render(input: &Path, ops: &Value, output: &Path) -> Result<Option<Value>> {
     if ops.len() > 1000 {
         return Err(err("Too many operations"));
     }
-    let temp = unique(".render");
-    image::open(input)?.save(&temp)?;
-    let result = (|| -> Result<Option<Value>> {
-        let mut content_rect = None;
-        for op in ops {
-            let mut img = image::open(&temp)?.to_rgba8();
-            if raster_op(&mut img, op)? {
-                img.save(&temp)?;
-                continue;
+    // The working image stays in memory. `png` holds magick's last output verbatim, so the next
+    // magick op reads exactly the PNG (colour type, page offset, chunks) it would have read from disk.
+    let mut img = image::open(input)?;
+    let mut png: Option<Vec<u8>> = None;
+    let mut fonts = std::collections::HashMap::new();
+    let mut content_rect = None;
+    for op in ops {
+        let typ = op["type"].as_str().unwrap_or("");
+        if ["redact", "pixelate", "highlight", "spotlight", "blur"].contains(&typ) {
+            let mut rgba = take_rgba(&mut img, &mut png)?;
+            raster_op(&mut rgba, op)?;
+            img = rgba.into();
+            continue;
+        }
+        if typ == "background" {
+            let (result, rect) = background::compose(&take_rgba(&mut img, &mut png)?, op)?;
+            img = result.into();
+            content_rect = Some(rect);
+            continue;
+        }
+        let x = number(op, "x", 0.)?;
+        let y = number(op, "y", 0.)?;
+        let w = number(op, "w", 100.)?.max(1.);
+        let h = number(op, "h", 100.)?.max(1.);
+        let x2 = number(op, "x2", x + w)?;
+        let y2 = number(op, "y2", y + h)?;
+        if typ == "crop" {
+            if w * h > 100_000_000. {
+                return Err(err("Crop canvas too large"));
             }
-            let typ = op["type"].as_str().unwrap_or("");
-            if typ == "background" {
-                let (result, rect) = background::compose(&img, op)?;
-                result.save(&temp)?;
-                content_rect = Some(rect);
-                continue;
+            let fill = op["background_color"].as_str().unwrap_or("#00000000");
+            let fill = background::parse_color(fill)?;
+            let mut canvas = RgbaImage::from_pixel(w as u32, h as u32, fill);
+            let source = take_rgba(&mut img, &mut png)?;
+            image::imageops::overlay(&mut canvas, &source, -(x as i64), -(y as i64));
+            img = canvas.into();
+            content_rect = Some(
+                json!({"x":0,"y":0,"w":w as u32,"h":h as u32,"sourceX":0,"sourceY":0,"sourceW":w as u32,"sourceH":h as u32}),
+            );
+            continue;
+        }
+        if typ == "image" {
+            if w * h > 100_000_000. {
+                return Err(err("Image layer too large"));
             }
-            let x = number(op, "x", 0.)?;
-            let y = number(op, "y", 0.)?;
-            let w = number(op, "w", 100.)?.max(1.);
-            let h = number(op, "h", 100.)?.max(1.);
-            let x2 = number(op, "x2", x + w)?;
-            let y2 = number(op, "y2", y + h)?;
-            if typ == "crop" {
-                if w * h > 100_000_000. {
-                    return Err(err("Crop canvas too large"));
-                }
-                let fill = op["background_color"].as_str().unwrap_or("#00000000");
-                let fill = background::parse_color(fill)?;
-                let mut canvas = RgbaImage::from_pixel(w as u32, h as u32, fill);
-                image::imageops::overlay(&mut canvas, &img, -(x as i64), -(y as i64));
-                canvas.save(&temp)?;
-                content_rect = Some(
-                    json!({"x":0,"y":0,"w":w as u32,"h":h as u32,"sourceX":0,"sourceY":0,"sourceW":w as u32,"sourceH":h as u32}),
-                );
-                continue;
+            let path = checked(
+                op["path"]
+                    .as_str()
+                    .ok_or_else(|| err("Image layer requires path"))?,
+            )?;
+            let layer = image::imageops::resize(
+                &image::open(path)?.to_rgba8(),
+                w as u32,
+                h as u32,
+                image::imageops::FilterType::Lanczos3,
+            );
+            let mut base = take_rgba(&mut img, &mut png)?;
+            let nw = base.width().max((x + w).max(1.) as u32);
+            let nh = base.height().max((y + h).max(1.) as u32);
+            if nw as u64 * nh as u64 > 100_000_000 {
+                return Err(err("Composed image too large"));
             }
-            if typ == "image" {
-                if w * h > 100_000_000. {
-                    return Err(err("Image layer too large"));
-                }
-                let path = checked(
-                    op["path"]
-                        .as_str()
-                        .ok_or_else(|| err("Image layer requires path"))?,
-                )?;
-                let layer = image::imageops::resize(
-                    &image::open(path)?.to_rgba8(),
-                    w as u32,
-                    h as u32,
-                    image::imageops::FilterType::Lanczos3,
-                );
-                let nw = img.width().max((x + w).max(1.) as u32);
-                let nh = img.height().max((y + h).max(1.) as u32);
-                if nw as u64 * nh as u64 > 100_000_000 {
-                    return Err(err("Composed image too large"));
-                }
-                if nw != img.width() || nh != img.height() {
-                    let mut expanded = RgbaImage::new(nw, nh);
-                    image::imageops::overlay(&mut expanded, &img, 0, 0);
-                    img = expanded;
-                }
-                image::imageops::overlay(&mut img, &layer, x as i64, y as i64);
-                img.save(&temp)?;
-                content_rect = Some(
-                    json!({"x":0,"y":0,"w":nw,"h":nh,"sourceX":0,"sourceY":0,"sourceW":nw,"sourceH":nh}),
-                );
-                continue;
+            if nw != base.width() || nh != base.height() {
+                let mut expanded = RgbaImage::new(nw, nh);
+                image::imageops::overlay(&mut expanded, &base, 0, 0);
+                base = expanded;
             }
-            let mut args = vec![temp.to_string_lossy().to_string()];
-            match typ {
-                "rotate" => args.extend(strings(&[
-                    "-rotate",
-                    &number(op, "angle", 90.)?.to_string(),
-                ])),
-                "flip" => args.push(
-                    if op["axis"].as_str() == Some("horizontal") {
-                        "-flop"
-                    } else {
-                        "-flip"
+            image::imageops::overlay(&mut base, &layer, x as i64, y as i64);
+            img = base.into();
+            content_rect = Some(
+                json!({"x":0,"y":0,"w":nw,"h":nh,"sourceX":0,"sourceY":0,"sourceW":nw,"sourceH":nh}),
+            );
+            continue;
+        }
+        let mut args = strings(&["-regard-warnings", "png:-"]);
+        match typ {
+            "rotate" => args.extend(strings(&[
+                "-rotate",
+                &number(op, "angle", 90.)?.to_string(),
+            ])),
+            "flip" => args.push(
+                if op["axis"].as_str() == Some("horizontal") {
+                    "-flop"
+                } else {
+                    "-flip"
+                }
+                .into(),
+            ),
+            "freehand" => {
+                let pts = op["points"]
+                    .as_array()
+                    .ok_or_else(|| err("freehand requires points array"))?;
+                if pts.len() > 10000 {
+                    return Err(err("Too many points"));
+                }
+                let stride = (pts.len() / 500).max(1);
+                let mut points = pts
+                    .iter()
+                    .step_by(stride)
+                    .map(|p| Ok((number(p, "x", 0.)?, number(p, "y", 0.)?)))
+                    .collect::<Result<Vec<_>>>()?;
+                if let Some(last) = pts.last() {
+                    let point = (number(last, "x", 0.)?, number(last, "y", 0.)?);
+                    if points.last() != Some(&point) {
+                        points.push(point);
                     }
-                    .into(),
-                ),
-                "freehand" => {
-                    let pts = op["points"]
-                        .as_array()
-                        .ok_or_else(|| err("freehand requires points array"))?;
-                    if pts.len() > 10000 {
-                        return Err(err("Too many points"));
-                    }
-                    let stride = (pts.len() / 500).max(1);
-                    let mut points = pts
-                        .iter()
-                        .step_by(stride)
-                        .map(|p| Ok((number(p, "x", 0.)?, number(p, "y", 0.)?)))
-                        .collect::<Result<Vec<_>>>()?;
-                    if let Some(last) = pts.last() {
-                        let point = (number(last, "x", 0.)?, number(last, "y", 0.)?);
-                        if points.last() != Some(&point) {
-                            points.push(point);
+                }
+                if op["smooth"].as_bool().unwrap_or(true) && points.len() > 2 {
+                    for _ in 0..2 {
+                        let mut smoothed = vec![points[0]];
+                        for pair in points.windows(2) {
+                            let (a, b) = (pair[0], pair[1]);
+                            smoothed.push((a.0 * 0.75 + b.0 * 0.25, a.1 * 0.75 + b.1 * 0.25));
+                            smoothed.push((a.0 * 0.25 + b.0 * 0.75, a.1 * 0.25 + b.1 * 0.75));
                         }
+                        smoothed.push(*points.last().unwrap());
+                        points = smoothed;
                     }
-                    if op["smooth"].as_bool().unwrap_or(true) && points.len() > 2 {
-                        for _ in 0..2 {
-                            let mut smoothed = vec![points[0]];
-                            for pair in points.windows(2) {
-                                let (a, b) = (pair[0], pair[1]);
-                                smoothed.push((a.0 * 0.75 + b.0 * 0.25, a.1 * 0.75 + b.1 * 0.25));
-                                smoothed.push((a.0 * 0.25 + b.0 * 0.75, a.1 * 0.25 + b.1 * 0.75));
-                            }
-                            smoothed.push(*points.last().unwrap());
-                            points = smoothed;
-                        }
-                    }
-                    let coordinates = points
-                        .iter()
-                        .map(|(x, y)| format!("{x:.3},{y:.3}"))
-                        .collect::<Vec<_>>();
-                    args.extend(strings(&[
-                        "-stroke",
-                        &color(op)?,
-                        "-strokewidth",
-                        &n(op, "width", 4.).clamp(1., 100.).to_string(),
-                        "-fill",
-                        "none",
-                        "-draw",
-                        &format!("polyline {}", coordinates.join(" ")),
-                    ]));
                 }
-                "resize" => {
-                    if w * h > 100_000_000. {
-                        return Err(err("Image too large"));
-                    }
-                    args.extend(strings(&[
-                        "-resize",
-                        &format!("{}x{}!", w as u32, h as u32),
-                    ]));
+                let coordinates = points
+                    .iter()
+                    .map(|(x, y)| format!("{x:.3},{y:.3}"))
+                    .collect::<Vec<_>>();
+                args.extend(strings(&[
+                    "-stroke",
+                    &color(op)?,
+                    "-strokewidth",
+                    &n(op, "width", 4.).clamp(1., 100.).to_string(),
+                    "-fill",
+                    "none",
+                    "-draw",
+                    &format!("polyline {}", coordinates.join(" ")),
+                ]));
+            }
+            "resize" => {
+                if w * h > 100_000_000. {
+                    return Err(err("Image too large"));
                 }
+                args.extend(strings(&[
+                    "-resize",
+                    &format!("{}x{}!", w as u32, h as u32),
+                ]));
+            }
 
-                "line" | "arrow" | "rectangle" | "filled" | "ellipse" | "text" | "step" => {
-                    let c = color(op)?;
-                    let stroke = n(op, "width", 4.).clamp(1., 100.);
-                    args.extend(strings(&[
-                        "-stroke",
-                        &c,
-                        "-strokewidth",
-                        &stroke.to_string(),
-                        "-fill",
-                        "none",
-                    ]));
-                    if typ == "filled" {
-                        args.extend(strings(&["-fill", &c]));
-                    }
-                    let draw = match typ {
-                        "filled" | "rectangle" => format!("rectangle {x},{y} {},{}", x + w, y + h),
-                        "ellipse" => format!(
-                            "ellipse {},{} {},{} 0,360",
-                            x + w / 2.,
-                            y + h / 2.,
-                            w / 2.,
-                            h / 2.
-                        ),
-                        "text" | "step" => String::new(),
-                        "arrow" if op["cx"].is_number() && op["cy"].is_number() => format!(
-                            "path 'M {x},{y} Q {},{} {x2},{y2}'",
-                            number(op, "cx", 0.)?,
-                            number(op, "cy", 0.)?
-                        ),
-                        _ => format!("line {x},{y} {x2},{y2}"),
+            "line" | "arrow" | "rectangle" | "filled" | "ellipse" | "text" | "step" => {
+                let c = color(op)?;
+                let stroke = n(op, "width", 4.).clamp(1., 100.);
+                args.extend(strings(&[
+                    "-stroke",
+                    &c,
+                    "-strokewidth",
+                    &stroke.to_string(),
+                    "-fill",
+                    "none",
+                ]));
+                if typ == "filled" {
+                    args.extend(strings(&["-fill", &c]));
+                }
+                let draw = match typ {
+                    "filled" | "rectangle" => format!("rectangle {x},{y} {},{}", x + w, y + h),
+                    "ellipse" => format!(
+                        "ellipse {},{} {},{} 0,360",
+                        x + w / 2.,
+                        y + h / 2.,
+                        w / 2.,
+                        h / 2.
+                    ),
+                    "text" | "step" => String::new(),
+                    "arrow" if op["cx"].is_number() && op["cy"].is_number() => format!(
+                        "path 'M {x},{y} Q {},{} {x2},{y2}'",
+                        number(op, "cx", 0.)?,
+                        number(op, "cy", 0.)?
+                    ),
+                    _ => format!("line {x},{y} {x2},{y2}"),
+                };
+                if !draw.is_empty() {
+                    args.extend(["-draw".into(), draw]);
+                }
+                if typ == "arrow" {
+                    let angle = if op["cx"].is_number() && op["cy"].is_number() {
+                        (y2 - number(op, "cy", y)?).atan2(x2 - number(op, "cx", x)?)
+                    } else {
+                        (y2 - y).atan2(x2 - x)
                     };
-                    if !draw.is_empty() {
-                        args.extend(["-draw".into(), draw]);
+                    let len = stroke * 4.;
+                    let a = (
+                        x2 - len * (angle - 0.5).cos(),
+                        y2 - len * (angle - 0.5).sin(),
+                    );
+                    let b = (
+                        x2 - len * (angle + 0.5).cos(),
+                        y2 - len * (angle + 0.5).sin(),
+                    );
+                    args.extend(strings(&[
+                        "-fill",
+                        &c,
+                        "-draw",
+                        &format!("polygon {x2},{y2} {},{} {},{}", a.0, a.1, b.0, b.1),
+                    ]));
+                }
+                if typ == "text" || typ == "step" {
+                    let style = op["style"].as_str().unwrap_or("standard");
+                    let family = if style.starts_with("monospaced") {
+                        "monospace"
+                    } else if style == "rounded" {
+                        "sans:weight=bold"
+                    } else {
+                        "sans"
+                    };
+                    if !fonts.contains_key(family) {
+                        let file = run("fc-match", &strings(&["-f", "%{file}", family]))?;
+                        fonts.insert(family, file);
                     }
-                    if typ == "arrow" {
-                        let angle = if op["cx"].is_number() && op["cy"].is_number() {
-                            (y2 - number(op, "cy", y)?).atan2(x2 - number(op, "cx", x)?)
+                    let font = &fonts[family];
+                    if !Path::new(&font).is_file() {
+                        return Err(err("No readable sans font found via fontconfig"));
+                    }
+                    let text = op["text"].as_str().unwrap_or("1");
+                    let size = n(op, "size", 28.).clamp(6., 500.);
+                    if typ == "text"
+                        && ["boxed", "rounded_boxed", "monospaced_boxed"].contains(&style)
+                    {
+                        let tw = n(op, "w", (text.chars().count() as f64 * size * 0.63).max(8.));
+                        let th = n(op, "h", size * 1.4);
+                        let shape = if style == "rounded_boxed" {
+                            format!(
+                                "roundrectangle {},{} {},{} {},{}",
+                                x - 8.,
+                                y - 4.,
+                                x + tw + 8.,
+                                y + th + 4.,
+                                size * 0.25,
+                                size * 0.25
+                            )
                         } else {
-                            (y2 - y).atan2(x2 - x)
+                            format!(
+                                "rectangle {},{} {},{}",
+                                x - 8.,
+                                y - 4.,
+                                x + tw + 8.,
+                                y + th + 4.
+                            )
                         };
-                        let len = stroke * 4.;
-                        let a = (
-                            x2 - len * (angle - 0.5).cos(),
-                            y2 - len * (angle - 0.5).sin(),
-                        );
-                        let b = (
-                            x2 - len * (angle + 0.5).cos(),
-                            y2 - len * (angle + 0.5).sin(),
-                        );
+                        args.extend(strings(&[
+                            "-stroke", "none", "-fill", &c, "-draw", &shape, "-fill", "white",
+                        ]));
+                    } else if typ == "step" {
                         args.extend(strings(&[
                             "-fill",
                             &c,
                             "-draw",
-                            &format!("polygon {x2},{y2} {},{} {},{}", a.0, a.1, b.0, b.1),
+                            &format!("circle {x},{y} {},{y}", x + size * 0.7),
+                            "-fill",
+                            "white",
                         ]));
+                    } else {
+                        args.extend(strings(&["-fill", &c]));
                     }
-                    if typ == "text" || typ == "step" {
-                        let style = op["style"].as_str().unwrap_or("standard");
-                        let family = if style.starts_with("monospaced") {
-                            "monospace"
-                        } else if style == "rounded" {
-                            "sans:weight=bold"
-                        } else {
-                            "sans"
-                        };
-                        let font = run("fc-match", &strings(&["-f", "%{file}", family]))?;
-                        if !Path::new(&font).is_file() {
-                            return Err(err("No readable sans font found via fontconfig"));
-                        }
-                        let text = op["text"].as_str().unwrap_or("1");
-                        let size = n(op, "size", 28.).clamp(6., 500.);
-                        if typ == "text"
-                            && ["boxed", "rounded_boxed", "monospaced_boxed"].contains(&style)
-                        {
-                            let tw =
-                                n(op, "w", (text.chars().count() as f64 * size * 0.63).max(8.));
-                            let th = n(op, "h", size * 1.4);
-                            let shape = if style == "rounded_boxed" {
-                                format!(
-                                    "roundrectangle {},{} {},{} {},{}",
-                                    x - 8.,
-                                    y - 4.,
-                                    x + tw + 8.,
-                                    y + th + 4.,
-                                    size * 0.25,
-                                    size * 0.25
-                                )
-                            } else {
-                                format!(
-                                    "rectangle {},{} {},{}",
-                                    x - 8.,
-                                    y - 4.,
-                                    x + tw + 8.,
-                                    y + th + 4.
-                                )
-                            };
-                            args.extend(strings(&[
-                                "-stroke", "none", "-fill", &c, "-draw", &shape, "-fill", "white",
-                            ]));
-                        } else if typ == "step" {
-                            args.extend(strings(&[
-                                "-fill",
-                                &c,
-                                "-draw",
-                                &format!("circle {x},{y} {},{y}", x + size * 0.7),
-                                "-fill",
-                                "white",
-                            ]));
-                        } else {
-                            args.extend(strings(&["-fill", &c]));
-                        }
-                        // Text is a separate annotation argument; escape ImageMagick percent-property expansion.
-                        let text = text.replace('%', "%%");
-                        let text = if text.starts_with('@') {
-                            format!("\\{text}")
-                        } else {
-                            text
-                        };
-                        let outlined = typ == "text" && style == "outlined";
-                        args.extend(strings(&[
-                            "-stroke",
-                            if outlined { "#ffffff" } else { "none" },
-                            "-strokewidth",
-                            if outlined { "2" } else { "0" },
-                            "-font",
-                            &font,
-                            "-pointsize",
-                            &size.to_string(),
-                            "-gravity",
-                            "NorthWest",
-                            "-annotate",
-                            &format!(
-                                "+{}+{}",
-                                if typ == "step" { x - size * 0.3 } else { x },
-                                if typ == "step" { y - size * 0.65 } else { y }
-                            ),
-                            &text,
-                        ]));
-                    }
+                    // Text is a separate annotation argument; escape ImageMagick percent-property expansion.
+                    let text = text.replace('%', "%%");
+                    let text = if text.starts_with('@') {
+                        format!("\\{text}")
+                    } else {
+                        text
+                    };
+                    let outlined = typ == "text" && style == "outlined";
+                    args.extend(strings(&[
+                        "-stroke",
+                        if outlined { "#ffffff" } else { "none" },
+                        "-strokewidth",
+                        if outlined { "2" } else { "0" },
+                        "-font",
+                        font,
+                        "-pointsize",
+                        &size.to_string(),
+                        "-gravity",
+                        "NorthWest",
+                        "-annotate",
+                        &format!(
+                            "+{}+{}",
+                            if typ == "step" { x - size * 0.3 } else { x },
+                            if typ == "step" { y - size * 0.65 } else { y }
+                        ),
+                        &text,
+                    ]));
                 }
-                _ => return Err(err(&format!("Unknown operation: {typ}"))),
             }
-            args.push(temp.to_string_lossy().into());
-            args.insert(0, "-regard-warnings".into());
-            run("magick", &args)?;
-            if ["resize", "rotate", "flip"].contains(&typ) {
-                let (w, h) = image::image_dimensions(&temp)?;
-                content_rect = Some(
-                    json!({"x":0,"y":0,"w":w,"h":h,"sourceX":0,"sourceY":0,"sourceW":w,"sourceH":h}),
-                );
-            }
+            _ => return Err(err(&format!("Unknown operation: {typ}"))),
         }
-        image::open(&temp)?.save(output)?;
-        Ok(content_rect)
-    })();
-    let _ = fs::remove_file(temp);
-    result
+        // Uncompressed PNG over pipes: same decoded state as the former temp file, minus zlib.
+        args.extend(strings(&["-define", "png:compression-level=0", "png:-"]));
+        let input = match png.take() {
+            Some(b) => b,
+            None => encode_png(&img)?,
+        };
+        let out = png.insert(magick(&args, &input)?);
+        if ["resize", "rotate", "flip"].contains(&typ) {
+            let (w, h) =
+                image::ImageReader::with_format(std::io::Cursor::new(out), ImageFormat::Png)
+                    .into_dimensions()?;
+            content_rect = Some(
+                json!({"x":0,"y":0,"w":w,"h":h,"sourceX":0,"sourceY":0,"sourceW":w,"sourceH":h}),
+            );
+        }
+    }
+    match png {
+        Some(b) => image::load_from_memory_with_format(&b, ImageFormat::Png)?,
+        None => img,
+    }
+    .save(output)?;
+    Ok(content_rect)
 }
 fn stitch(a: &RgbaImage, b: &RgbaImage) -> Result<RgbaImage> {
     if a.width() != b.width() {

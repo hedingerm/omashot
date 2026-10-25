@@ -37,6 +37,8 @@ Rectangle {
         return choices.slice(0, 3);
     }
     property bool backgroundEnabled: false
+    // Sliders held down; the editor holds back exact renders until they are released.
+    property int pressedSliders: 0
     property bool restoring: false
     property var settings: defaults()
     property string message: ""
@@ -333,6 +335,7 @@ Rectangle {
         }
         Slider {
             id: slide
+            objectName: "slider-" + control.label.toLowerCase()
             Layout.fillWidth: true
             implicitHeight: 22
             from: control.from
@@ -340,6 +343,7 @@ Rectangle {
             value: control.value
             stepSize: control.stepSize
             onMoved: control.moved(value)
+            onPressedChanged: root.pressedSliders += pressed ? 1 : -1
             background: Rectangle {
                 x: slide.leftPadding
                 y: slide.topPadding + slide.availableHeight / 2 - 2
@@ -583,6 +587,7 @@ Rectangle {
                                 source: "file://" + modelData.path
                                 sourceSize: Qt.size(Math.max(3, Math.round(200 / modelData.blur)), Math.max(3, Math.round(200 / modelData.blur)))
                                 fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
                                 smooth: true
                             }
                             Rectangle {

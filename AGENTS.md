@@ -17,6 +17,7 @@ User-facing behavior is documented in `README.md`; read it before changing featu
 | `src/snapshot.rs` | Frozen-desktop snapshots, isolated window capture (spawns `plugin/WindowCapture.qml`) |
 | `plugin/Main.qml` | Launcher window, `IpcHandler` (`target: "omashot"`), quick access, pins, preferences |
 | `plugin/Editor.qml`, `AnnotationGeometry.js` | Annotation editor and its hit-test/geometry helpers |
+| `plugin/LiveScene.qml` | Live GPU preview of an edit (annotations, background, pending transforms); mirrors the backend render, which replaces it once current. Keep both in sync (`tests/live-scene-fidelity.py`) |
 | `plugin/BackgroundPanel.qml` | Background sidebar, presets, wallpaper import |
 | `plugin/CaptureSelector.qml`, `ScrollCapture.qml`, `QuickAccess.qml` | Area selection, scrolling capture, post-capture thumbnails |
 | `plugin/Icon.qml`, `IconButton.qml` | Shared SVG icon set and accessible icon button — reuse these for any new control |
