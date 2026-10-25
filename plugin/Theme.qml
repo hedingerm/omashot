@@ -48,6 +48,26 @@ QtObject {
     readonly property color lightest: luminance(foreground) < luminance(background) ? background : foreground
     readonly property color scrim: alpha(background, 0.5)
 
+    // Corner style from the `corners` preference: "auto" follows Hyprland's decoration:rounding
+    // (0 on Omarchy, so square), "square" and "rounded" force it. Chrome radii go through radius().
+    property string corners: "auto"
+    property bool hyprRounded: false
+    readonly property bool rounded: corners === "rounded" || (corners === "auto" && hyprRounded)
+    function radius(r) {
+        return rounded ? r : 0;
+    }
+    property Process hyprRounding: Process {
+        command: ["hyprctl", "getoption", "decoration:rounding", "-j"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.hyprRounded = JSON.parse(text).int > 0;
+                } catch (e) {}
+            }
+        }
+    }
+
     // Fusion palette for Qt Quick Controls. Assign with `palette: Theme.controls.palette`
     // on each window's root item and on every Popup/Menu/Dialog (popups don't inherit).
     // Roles animate on a private staging item; `controls` takes the whole palette once per
@@ -193,7 +213,10 @@ QtObject {
         path: root.statePath + "/theme/colors.toml"
         blockLoading: true
         printErrors: false
-        onLoaded: root.load(text())
+        onLoaded: {
+            root.load(text());
+            root.hyprRounding.running = true; // a theme switch may change rounding too
+        }
     }
     property FileView themeName: FileView {
         path: root.statePath + "/theme.name"

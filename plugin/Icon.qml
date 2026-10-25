@@ -67,7 +67,17 @@ Image {
             "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>'
         })
     readonly property string resolvedName: name === "chevron-down" ? "chevron" : name === "wallpaper" ? "image" : name
-    source: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + ink + '" color="' + ink + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (drawings[resolvedName] || drawings.more) + '</svg>')
+    // Square corners (Theme.rounded off, the Omarchy default): no rect rx, straight corner arcs, square caps.
+    readonly property var squareDrawings: ({
+            "capture": '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M12 7v10M7 12h10"/>',
+            "import": '<path d="M12 3v12m-4-4 4 4 4-4M4 15v6h16v-6"/>',
+            "crop": '<path d="M6 2v16h16M2 6h16v16"/>',
+            "copy": '<rect x="8" y="8" width="13" height="13"/><path d="M16 8V3H3v13h5"/>',
+            "save": '<path d="M3 3h14l4 4v14H3Z"/><path d="M7 3v6h9V3M7 21v-8h10v8"/>',
+            "folder": '<path d="M3 3h7l3 3h8v15H3Z"/>'
+        })
+    readonly property string drawing: Theme.rounded ? (drawings[resolvedName] || drawings.more) : squareDrawings[resolvedName] || (drawings[resolvedName] || drawings.more).replace(/(<rect[^>]*?) rx="[^"]*"/g, "$1")
+    source: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + ink + '" color="' + ink + '" stroke-width="1.8" stroke-linecap="' + (Theme.rounded ? "round" : "square") + '" stroke-linejoin="' + (Theme.rounded ? "round" : "miter") + '">' + drawing + '</svg>')
     // Rasterize once in white and tint on the GPU so theme fades never re-render SVGs;
     // the software renderer (offscreen tests) has no shader effects, so bake the color there.
     readonly property bool tinted: GraphicsInfo.api !== GraphicsInfo.Software

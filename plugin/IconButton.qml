@@ -22,7 +22,7 @@ Button {
         color: !root.enabled ? Theme.textDisabled : root.selected || root.checked ? Theme.accentText : Theme.text
     }
     background: Rectangle {
-        radius: 8
+        radius: Theme.radius(8)
         color: root.down ? Theme.accentPressed : root.selected || root.checked ? Theme.accent : root.hovered ? Theme.raised : "transparent"
         border.width: root.activeFocus ? 1 : 0
         border.color: Theme.accentHover

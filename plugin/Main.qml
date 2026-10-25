@@ -41,6 +41,11 @@ Item {
     property bool preferencesLoaded: false
     property var captureSnapshot: null
     property string recognitionPath: ""
+    Binding {
+        target: Theme
+        property: "corners"
+        value: root.preferences.corners || "auto"
+    }
     function open(payload) {
         if (scrollSurface.active)
             return;
@@ -427,6 +432,7 @@ Item {
                 prefCrosshair.checked = data.show_crosshair !== false;
                 prefMagnifier.checked = data.show_magnifier !== false;
                 prefWindowTransparent.checked = !!data.window_transparent;
+                prefCorners.currentIndex = Math.max(0, ["auto", "square", "rounded"].indexOf(data.corners || "auto"));
                 settings.open();
             } else if (root.job === "ocr" || root.job === "qr") {
                 outputText.text = data.text || data.value || JSON.stringify(data);
@@ -799,7 +805,7 @@ Item {
                                     root.previewZoom = 0;
                                 }
                                 background: Rectangle {
-                                    radius: 9
+                                    radius: Theme.radius(9)
                                     color: root.current === modelData.path ? Theme.accentSoft : Theme.surface
                                     border.color: root.current === modelData.path ? Theme.accent : Theme.border
                                 }
@@ -837,7 +843,7 @@ Item {
                                             implicitHeight: 24
                                             padding: 3
                                             background: Rectangle {
-                                                radius: 12
+                                                radius: Theme.radius(12)
                                                 color: parent.hovered ? Theme.accentHover : Theme.accent
                                             }
                                             contentItem: Text {
@@ -984,7 +990,7 @@ Item {
                     Rectangle {
                         implicitWidth: 110
                         implicitHeight: 30
-                        radius: 15
+                        radius: Theme.radius(15)
                         color: Theme.surface
                         border.color: Theme.border
                         visible: !!root.current
@@ -1204,6 +1210,7 @@ Item {
                 c.show_crosshair = prefCrosshair.checked;
                 c.show_magnifier = prefMagnifier.checked;
                 c.window_transparent = prefWindowTransparent.checked;
+                c.corners = ["auto", "square", "rounded"][prefCorners.currentIndex];
                 root.preferences = c;
                 root.delay = c.delay;
                 root.cursor = c.cursor;
@@ -1221,6 +1228,22 @@ Item {
                         Layout.fillWidth: true
                         font.pixelSize: 12
                         opacity: 0.65
+                    }
+                    Label {
+                        text: "Appearance"
+                        font.bold: true
+                        font.pixelSize: 17
+                    }
+                    RowLayout {
+                        Label {
+                            text: "Corners"
+                            Layout.fillWidth: true
+                        }
+                        ComboBox {
+                            id: prefCorners
+                            model: ["Follow Hyprland", "Square", "Rounded"]
+                            Layout.preferredWidth: 180
+                        }
                     }
                     Label {
                         text: "Capture"
@@ -1542,7 +1565,7 @@ Item {
                 Rectangle {
                     id: roundedMask
                     anchors.fill: parent
-                    radius: 9
+                    radius: Theme.radius(9)
                     color: "white"
                     layer.enabled: true
                     visible: false
@@ -1556,7 +1579,7 @@ Item {
                 }
                 Rectangle {
                     anchors.fill: parent
-                    radius: 9
+                    radius: Theme.radius(9)
                     color: "transparent"
                     border.width: 1
                     border.color: pinHover.hovered ? Theme.accent : Theme.alpha(Theme.borderStrong, 0.6)
@@ -1590,7 +1613,7 @@ Item {
                     visible: pinHover.hovered
                     width: 48
                     height: 20
-                    radius: 10
+                    radius: Theme.radius(10)
                     color: Theme.alpha(Theme.window, 0.85)
                     Text {
                         anchors.centerIn: parent
@@ -1611,7 +1634,7 @@ Item {
                     iconName: "close"
                     text: "Unpin screenshot"
                     background: Rectangle {
-                        radius: 12
+                        radius: Theme.radius(12)
                         color: Theme.alpha(Theme.window, 0.9)
                     }
                     contentItem: Icon {
@@ -1637,7 +1660,7 @@ Item {
                     iconName: "pin"
                     text: "Pass clicks through; restore interaction from pinned screenshot controls"
                     background: Rectangle {
-                        radius: 12
+                        radius: Theme.radius(12)
                         color: Theme.alpha(Theme.window, 0.9)
                     }
                     contentItem: Icon {
@@ -1654,7 +1677,7 @@ Item {
                     visible: pinHover.hovered
                     width: Math.min(120, parent.width - 64)
                     height: 22
-                    radius: 11
+                    radius: Theme.radius(11)
                     color: Theme.alpha(Theme.window, 0.8)
                     Slider {
                         anchors.fill: parent
@@ -1682,7 +1705,7 @@ Item {
                     iconName: "more"
                     text: "Move to display / resize"
                     background: Rectangle {
-                        radius: 12
+                        radius: Theme.radius(12)
                         color: Theme.alpha(Theme.window, 0.9)
                     }
                     contentItem: Icon {
@@ -1705,7 +1728,7 @@ Item {
                     iconName: "resize"
                     text: "Drag to resize"
                     background: Rectangle {
-                        radius: 12
+                        radius: Theme.radius(12)
                         color: Theme.alpha(Theme.window, 0.9)
                     }
                     contentItem: Icon {

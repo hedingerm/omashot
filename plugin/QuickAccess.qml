@@ -50,7 +50,7 @@ Item {
         size: 28
         iconSize: 16
         background: Rectangle {
-            radius: width / 2
+            radius: Theme.radius(width / 2)
             color: parent.hovered ? Theme.raised : Theme.alpha(Theme.window, 0.92)
         }
         contentItem: Icon {
@@ -101,7 +101,7 @@ Item {
                         readonly property bool showActions: hover.hovered && !preparingDrag && !dragArea.drag.active
                         width: stack.width
                         height: Math.max(96, Math.min(width * 0.85, width * Math.max(1, modelData.height || 90) / Math.max(1, modelData.width || 160)))
-                        radius: 9
+                        radius: Theme.radius(9)
                         color: Theme.surface
                         border.width: 1
                         border.color: hover.hovered ? Theme.accent : Theme.border
@@ -123,7 +123,7 @@ Item {
                         Rectangle {
                             id: cardMask
                             anchors.fill: thumb
-                            radius: 8
+                            radius: Theme.radius(8)
                             color: "white"
                             layer.enabled: true
                             visible: false
@@ -178,7 +178,7 @@ Item {
                                 implicitHeight: 30
                                 padding: 4
                                 background: Rectangle {
-                                    radius: 15
+                                    radius: Theme.radius(15)
                                     color: parent.hovered ? Theme.accentHover : Theme.accent
                                 }
                                 contentItem: Text {
@@ -200,7 +200,7 @@ Item {
                                 implicitHeight: 30
                                 padding: 4
                                 background: Rectangle {
-                                    radius: 15
+                                    radius: Theme.radius(15)
                                     color: parent.hovered ? Theme.accentHover : Theme.accent
                                 }
                                 contentItem: Text {
@@ -288,7 +288,7 @@ Item {
         color: "transparent"
         Rectangle {
             anchors.fill: parent
-            radius: 9
+            radius: Theme.radius(9)
             color: Theme.alpha(Theme.panel, 0.9)
             border.color: Theme.borderStrong
             Row {

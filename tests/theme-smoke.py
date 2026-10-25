@@ -22,10 +22,15 @@ ShellRoot { FloatingWindow {id:win;visible:true;implicitWidth:300;implicitHeight
  property var samples:[]
  property int settled:0
  function hex(c){return c.toString().toLowerCase()}
+ function corners(){
+  var icon=button.contentItem;Theme.corners="square";var sq=button.background.radius===0&&decodeURIComponent(icon.source).indexOf('stroke-linecap="square" stroke-linejoin="miter"')>0
+  Theme.corners="rounded";var rd=button.background.radius===8&&decodeURIComponent(icon.source).indexOf('stroke-linecap="round" stroke-linejoin="round"')>0
+  Theme.corners="auto";return sq&&rd&&Theme.rounded===Theme.hyprRounded}
  function fail(m){console.error("THEME_FAILURE="+m);Qt.quit()}
  Timer {interval:200;running:true;onTriggered:{
   if(!Theme.ready||win.hex(Theme.background)!=="#1e1e2e"||win.hex(Theme.accent)!=="#89b4fa"||Theme.light)win.fail("initial theme loads synchronously: "+Theme.background)
   else if(win.hex(button.background.color)!=="#89b4fa"||win.hex(menu.palette.window)!==win.hex(Theme.panel))win.fail("controls bind to theme")
+  else if(!win.corners())win.fail("corners: square/rounded radius and icon caps: "+button.background.radius+" "+decodeURIComponent(button.contentItem.source))
   else console.log("THEME_READY")
  }}
  Connections {target:Theme;function onBackgroundChanged(){win.samples=win.samples.concat([win.hex(Theme.background)])}}
@@ -50,4 +55,4 @@ ShellRoot { FloatingWindow {id:win;visible:true;implicitWidth:300;implicitHeight
   if proc.poll() is None:proc.kill()
  log=''.join(out)
  assert 'THEME_PASSED' in log and not any(x in log for x in ['THEME_FAILURE=','ReferenceError','TypeError']),log
-print('PASS: theme loads synchronously, follows an omarchy-style swap with an animated fade, light roles and controls palette')
+print('PASS: theme loads synchronously, corners switch square/rounded, follows an omarchy-style swap with an animated fade, light roles and controls palette')

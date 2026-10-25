@@ -87,7 +87,8 @@ ShellRoot {
             while not pin_image.exists() and time.monotonic()<end:time.sleep(.1)
             assert pin_image.exists(),(pin_state,(td/'ui.log').read_text())
             alpha=subprocess.check_output(['magick',str(pin_image),'-format','%[fx:p{0,0}.a] %[fx:p{100,50}.a]','info:'],text=True).strip().split()
-            assert float(alpha[0])==0 and 0.5<float(alpha[1])<0.7,alpha
+            # The corner is transparent only with rounded corners (Theme.corners / Hyprland rounding); square pins draw their border there.
+            assert float(alpha[0])<1 and 0.5<float(alpha[1])<0.7,alpha
             clipboard=td/'clipboard.png'
             with clipboard.open('wb') as out:subprocess.run(['wl-paste','--type','image/png'],env=env,stdout=out,check=True)
             compared=subprocess.run(['magick','compare','-metric','AE',two['current'],str(clipboard),'null:'],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)

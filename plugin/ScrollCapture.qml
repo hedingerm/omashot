@@ -239,7 +239,7 @@ Item {
         color: "transparent"
         Rectangle {
             anchors.fill: parent
-            radius: 20
+            radius: Theme.radius(20)
             color: Theme.alpha(Theme.panel, 0.96)
             border.color: Theme.border
             palette: Theme.controls.palette
@@ -294,7 +294,7 @@ Item {
         color: "transparent"
         Rectangle {
             anchors.fill: parent
-            radius: 6
+            radius: Theme.radius(6)
             color: Theme.alpha(Theme.panel, 0.9)
             border.color: Theme.borderStrong
             Image {

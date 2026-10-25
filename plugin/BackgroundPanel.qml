@@ -256,7 +256,7 @@ Rectangle {
         Rectangle {
             anchors.fill: parent
             anchors.margins: 2
-            radius: 7
+            radius: Theme.radius(7)
             color: Theme.surface
         }
         Canvas {
@@ -291,7 +291,7 @@ Rectangle {
         Rectangle {
             anchors.fill: parent
             color: "transparent"
-            radius: 10
+            radius: Theme.radius(10)
             border.width: thumb.selected ? 2 : 1
             border.color: thumb.selected ? Theme.accent : Theme.border
         }
@@ -349,12 +349,12 @@ Rectangle {
                 y: slide.topPadding + slide.availableHeight / 2 - 2
                 width: slide.availableWidth
                 height: 4
-                radius: 2
+                radius: Theme.radius(2)
                 color: Theme.border
                 Rectangle {
                     width: slide.visualPosition * parent.width
                     height: parent.height
-                    radius: 2
+                    radius: Theme.radius(2)
                     color: Theme.accent
                 }
             }
@@ -363,7 +363,7 @@ Rectangle {
                 y: slide.topPadding + slide.availableHeight / 2 - height / 2
                 width: 13
                 height: 13
-                radius: 6.5
+                radius: Theme.radius(6.5)
                 color: Theme.lightest
                 border.color: Theme.borderStrong
             }
@@ -429,7 +429,7 @@ Rectangle {
                 checkable: true
                 onClicked: root.disable()
                 background: Rectangle {
-                    radius: 5
+                    radius: Theme.radius(5)
                     color: !root.backgroundEnabled ? Theme.accentSoft : Theme.surface
                     border.color: !root.backgroundEnabled ? Theme.accent : "transparent"
                 }
@@ -593,7 +593,7 @@ Rectangle {
                             Rectangle {
                                 anchors.fill: parent
                                 color: "transparent"
-                                radius: 9
+                                radius: Theme.radius(9)
                                 border.width: root.backgroundEnabled && root.settings.mode === "blurred" && root.settings.image_path === (modelData.source ? "" : modelData.path) && root.settings.blur === modelData.blur ? 2 : 1
                                 border.color: Theme.borderStrong
                             }
@@ -637,7 +637,7 @@ Rectangle {
                             required property string modelData
                             width: 20
                             height: 20
-                            radius: 10
+                            radius: Theme.radius(10)
                             color: modelData === "custom" || modelData === "#00000000" ? "transparent" : modelData
                             Canvas {
                                 anchors.fill: parent
@@ -773,13 +773,13 @@ Rectangle {
                                 required property int index
                                 width: 27
                                 height: 21
-                                radius: 4
+                                radius: Theme.radius(4)
                                 color: root.settings.alignment === modelData ? Theme.accent : "transparent"
                                 border.color: root.settings.alignment === modelData ? Theme.accentHover : Theme.borderStrong
                                 Rectangle {
                                     width: 11
                                     height: 7
-                                    radius: 1
+                                    radius: Theme.radius(1)
                                     color: root.settings.alignment === modelData ? Theme.accentText : Theme.textMuted
                                     x: index % 3 === 0 ? 3 : index % 3 === 1 ? 8 : 13
                                     y: index < 3 ? 3 : index < 6 ? 7 : 11

@@ -76,6 +76,7 @@ OmaShot is a native screenshot tool for Omarchy, built as an Omarchy shell plugi
 - Quick-access thumbnails: copy, save, edit, pin or drag away
 - **Pins** float above your windows with opacity and click-through
 - Follows the **active Omarchy theme** live, fading with the shell on every switch
+- Square corners like the rest of Omarchy: follows Hyprland's `decoration:rounding`, or force square/rounded in Preferences
 - Local **OCR** (Tesseract) and **QR** decoding straight to the clipboard
 - **History** that expires after a configurable number of days
 
@@ -235,6 +236,8 @@ Most settings live in the Preferences panel. Under the hood:
 **History retention:** captures are deleted after 30 days by default (`0` keeps them forever). Cleanup runs at shell startup, hourly, and on demand with `omashot cleanup`. Exported files and imported wallpapers are never deleted.
 
 **Theme:** OmaShot uses the active Omarchy theme and needs no setup. Inside the Omarchy shell it follows the shell's own palette, so it fades in the same frame as the bar. Standalone, it reads `~/.local/state/omarchy/current/theme/colors.toml` and watches `theme.name`, which `omarchy theme set` rewrites after each switch. Every window, menu, dialog, pin, quick-access card and capture overlay fades to the new palette over the same 420 ms as the shell, light themes included. Annotation colors, background presets and your captures never change with the theme. Set `OMASHOT_THEME_PATH` to another `current`-style directory to preview a theme without switching your desktop.
+
+**Corners:** by default (`"corners": "auto"`) OmaShot reads Hyprland's `decoration:rounding` on startup and on each theme switch. When it is 0, as it is on stock Omarchy, panels, buttons and icons are square. Otherwise they are rounded. Choose Square or Rounded in Preferences to override this. The setting only changes OmaShot's own interface: corner radii you set on a capture's background, text boxes and highlights stay the same.
 
 **Desktop icons:** if you use a desktop-icon provider, set `hide_desktop_icons: true` with `desktop_hide_argv` and `desktop_restore_argv` command arrays to hide icons while capturing. Commands run directly, without a shell.
 

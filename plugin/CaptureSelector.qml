@@ -273,7 +273,7 @@ Item {
                     readonly property int zoom: 8
                     width: 140
                     height: 140
-                    radius: 8
+                    radius: Theme.radius(8)
                     x: surface.localPointerX + 28 + width < surface.width - 10 ? surface.localPointerX + 28 : surface.localPointerX - width - 28
                     y: surface.localPointerY + 28 + height < surface.height - 10 ? surface.localPointerY + 28 : surface.localPointerY - height - 28
                     color: Theme.window
@@ -316,7 +316,7 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         color: "transparent"
-                        radius: 8
+                        radius: Theme.radius(8)
                         border.width: 2
                         border.color: Theme.accent
                     }
@@ -327,7 +327,7 @@ Item {
                     y: surface.localPointerY > 45 ? surface.localPointerY - 34 : surface.localPointerY + 12
                     implicitWidth: coordinates.implicitWidth + 16
                     implicitHeight: 25
-                    radius: 6
+                    radius: Theme.radius(6)
                     color: Theme.alpha(Theme.window, 0.92)
                     Text {
                         id: coordinates
@@ -344,7 +344,7 @@ Item {
                     visible: !root.hasSelection
                     implicitWidth: hint.implicitWidth + 28
                     implicitHeight: 33
-                    radius: 9
+                    radius: Theme.radius(9)
                     color: Theme.alpha(Theme.window, 0.92)
                     Text {
                         id: hint

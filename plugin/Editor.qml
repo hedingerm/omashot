@@ -10,7 +10,7 @@ Rectangle {
     id: root
     color: Theme.window
     palette: Theme.controls.palette
-    radius: 10
+    radius: Theme.radius(10)
     clip: true
     property string sourcePath: ""
     property string basePath: sourcePath
@@ -960,7 +960,7 @@ Rectangle {
         font.pixelSize: 12
         implicitHeight: 30
         background: Rectangle {
-            radius: 5
+            radius: Theme.radius(5)
             color: Theme.surface
             border.color: Theme.border
         }
@@ -1223,14 +1223,14 @@ Rectangle {
                             Rectangle {
                                 width: 16
                                 height: 16
-                                radius: 8
+                                radius: Theme.radius(8)
                                 color: root.ink
                                 border.color: Theme.text
                                 anchors.centerIn: parent
                             }
                         }
                         background: Rectangle {
-                            radius: 6
+                            radius: Theme.radius(6)
                             color: colorButton.hovered ? Theme.raised : Theme.surface
                         }
                         onClicked: inkPopup.open()
@@ -1744,7 +1744,7 @@ Rectangle {
                                             y: (modelData.y - imageArea.sourceY) * imageArea.sy - 5
                                             width: 10
                                             height: 10
-                                            radius: 3
+                                            radius: Theme.radius(3)
                                             color: "white"
                                             border.color: Theme.accent
                                             MouseArea {
@@ -1770,7 +1770,7 @@ Rectangle {
                         anchors.margins: 14
                         width: renderLabel.implicitWidth + 20
                         height: 26
-                        radius: 13
+                        radius: Theme.radius(13)
                         color: Theme.accentSoft
                         visible: renderProcess.running && !root.previewRender
                         Text {
@@ -1870,7 +1870,7 @@ Rectangle {
                         anchors.centerIn: parent
                         width: Math.min(104, parent.width)
                         height: 27
-                        radius: 13.5
+                        radius: Theme.radius(13.5)
                         color: dragMouse.containsMouse ? Theme.raised : Theme.surface
                         border.color: Theme.border
                         // Edits never make the pill look busy: a drag that starts before the exact file exists renders it
@@ -1973,7 +1973,7 @@ Rectangle {
         height: 122
         padding: 12
         background: Rectangle {
-            radius: 9
+            radius: Theme.radius(9)
             color: Theme.panel
             border.color: Theme.border
         }
@@ -1987,7 +1987,7 @@ Rectangle {
                         required property string modelData
                         width: 20
                         height: 20
-                        radius: 10
+                        radius: Theme.radius(10)
                         color: modelData
                         border.color: root.ink === modelData ? Theme.text : Theme.borderStrong
                         border.width: root.ink === modelData ? 2 : 1
