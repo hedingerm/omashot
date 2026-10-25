@@ -12,7 +12,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
-- Editing is live: drawing, moving and resizing marks, undo/redo, background sliders and crop/rotate/flip/resize now appear in the next frame, at any number of annotations. The editor draws the edit on the GPU and swaps in the exact backend render when it catches up; saved and exported images are still that backend render. Copy and Save as wait for it instead of being disabled.
+- Editing is live: drawing, moving and resizing marks, undo/redo, background sliders and crop/rotate/flip/resize now appear in the next frame, at any number of annotations. The editor draws the edit on the GPU and swaps in the exact backend render when it catches up; saved and exported images are still that backend render. Copy, Save as and Drag Me wait for it instead of being disabled, and the editor no longer shows an updating state.
 - Region capture opens the selector about 0.6 s sooner, and captures, history thumbnails, pins and the background panel no longer block on full-size image decodes.
 - The installer restarts the Omarchy shell when `qmldir` is new or a singleton such as `Theme.qml` changed, because singletons survive a plugin rescan.
 - README screenshots are rendered in the Tokyo Night theme (`OMASHOT_SCREENSHOT_THEME` overrides it).

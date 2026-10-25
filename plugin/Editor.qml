@@ -820,6 +820,12 @@ Rectangle {
     function exportPath() {
         return previewPath || sourcePath;
     }
+    function renderNow() {
+        if (displayRevision === revision)
+            return;
+        previewTimer.stop();
+        startRender(true);
+    }
     // Copy/export act on the exact render; when it is still catching up they run as soon as it arrives.
     // A null argument stands for that render's path.
     property var queuedAuxiliary: null
@@ -833,8 +839,7 @@ Rectangle {
                 args: args,
                 message: message
             };
-            previewTimer.stop();
-            startRender(true);
+            renderNow();
             return;
         }
         queuedAuxiliary = null;
@@ -1864,21 +1869,9 @@ Rectangle {
                         radius: 13.5
                         color: dragMouse.containsMouse ? Theme.raised : Theme.surface
                         border.color: Theme.border
+                        // Edits never make the pill look busy: a drag that starts before the exact file exists renders it
+                        // right away and hands it over as soon as it is written.
                         readonly property bool ready: !root.busy && root.previewReady
-                        property bool lagging: false
-                        onReadyChanged: {
-                            lagging = false;
-                            if (ready)
-                                lagTimer.stop();
-                            else
-                                lagTimer.restart();
-                        }
-                        Timer {
-                            id: lagTimer
-                            interval: 800
-                            onTriggered: dragPill.lagging = !dragPill.ready
-                        }
-                        opacity: lagging ? .6 : 1
                         Row {
                             anchors.centerIn: parent
                             spacing: 6
@@ -1888,7 +1881,7 @@ Rectangle {
                                 color: Theme.textMuted
                             }
                             Text {
-                                text: dragPill.lagging ? "Updating…" : "Drag Me"
+                                text: "Drag Me"
                                 color: Theme.textSoft
                                 font.pixelSize: 10
                             }
@@ -1907,12 +1900,15 @@ Rectangle {
                             id: dragMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            enabled: dragPill.ready
+                            enabled: !root.busy
                             cursorShape: Qt.OpenHandCursor
                             drag.target: dragProxy
-                            onPressed: picture.grabToImage(function (result) {
-                                dragPill.Drag.imageSource = result.url;
-                            })
+                            onPressed: {
+                                root.renderNow();
+                                (root.liveShown ? live : picture).grabToImage(function (result) {
+                                    dragPill.Drag.imageSource = result.url;
+                                });
+                            }
                         }
                         Item {
                             id: dragProxy
