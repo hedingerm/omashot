@@ -24,6 +24,8 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --locked
+      - name: Keybindings test
+        run: cargo build --locked && python3 tests/keybindings.py
       - name: Installer test
         run: bash tests/install.sh
       - name: Manifest and version consistency

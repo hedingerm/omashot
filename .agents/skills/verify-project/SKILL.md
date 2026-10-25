@@ -42,6 +42,7 @@ Live checks run in a private, hidden Hyprland nested in the session (window on `
 | `render-regression`, `render-golden` | backend render dimensions/hashes; golden decoded-RGBA checksums (ImageMagick-dependent cases skip if the local magick/font key differs; the output says so) |
 | `render-identity` | ~650 synthetic render cases pixel-identical to the baseline revision |
 | `history-service` | retention, wallpaper library, ownership checks through the CLI |
+| `keybindings` | shortcut validation, generated Lua, single hook block in an isolated `hypr/bindings.lua`, registration checked via a fake `hyprctl`, clean removal |
 | `editor-*` (offscreen) | editor event handling, object selection/move, narrow toolbar, background panel, live scene updating synchronously |
 | `theme-smoke` | `Theme` follows `OMASHOT_THEME_PATH` changes |
 | `ui-smoke` | live capture → quick access → editor → pin, project/export/delete, clipboard pixel equality, OCR, QR |

@@ -161,14 +161,19 @@ Open the launcher with `omashot-ui`, or go straight to a mode:
 
 ### Keybindings
 
-Bind any command through Omarchy's keybinding config, for example in `~/.config/hypr/bindings.lua`:
+Set shortcuts under **Preferences → Keyboard shortcuts**. Focus a field and press the combination, or type it (`SUPER + ALT + S`, `Print`, `CTRL + SHIFT + F5`). A combination Hyprland already uses never reaches OmaShot, so type it instead. The field then shows what it replaces (for example Omarchy's own `Screenshot`). On Save, OmaShot reloads Hyprland and checks that every shortcut is registered.
+
+This needs Omarchy 4's Lua config. OmaShot writes your shortcuts to `~/.config/omashot/hyprland-bindings.lua` and adds one marked block to `~/.config/hypr/bindings.lua` that loads this file:
 
 ```lua
-o.bind("SUPER + ALT + S", "OmaShot area", "omashot-ui region")
-o.bind("SUPER + ALT + H", "OmaShot history", "omashot-ui history")
+-- BEGIN OMASHOT (managed by OmaShot Preferences)
+pcall(dofile, "/home/you/.config/omashot/hyprland-bindings.lua")
+-- END OMASHOT
 ```
 
-Pick chords that aren't taken yet (replacing one requires `hl.unbind(...)`), then check with `hyprctl reload` and `hyprctl configerrors`. Installing OmaShot doesn't touch your existing screenshot bindings.
+Nothing else in your config is changed. A replaced binding is unbound only while OmaShot's shortcut uses it. Clearing every field, `omashot bindings remove` or uninstalling removes the block again. Installing OmaShot alone doesn't touch your screenshot bindings.
+
+You can also bind commands by hand in `~/.config/hypr/bindings.lua`, e.g. `o.bind("SUPER + ALT + S", "OmaShot area", "omashot-ui region")`. To replace a taken chord, add `hl.unbind(...)` before it, then check with `hyprctl reload` and `hyprctl configerrors`.
 
 ### Tips
 
@@ -230,6 +235,7 @@ Most settings live in the Preferences panel. Under the hood:
 |---|---|
 | `~/.local/share/omashot/` | Captures, editable projects, wallpapers (`$XDG_DATA_HOME`) |
 | `~/.config/omashot/config.json` | Preferences (`$XDG_CONFIG_HOME`) |
+| `~/.config/omashot/keybindings.json`, `hyprland-bindings.lua` | Keyboard shortcuts and the generated Hyprland file |
 
 `omashot config` prints the current configuration; `omashot config '<json>'` replaces it, so keep existing keys when scripting.
 

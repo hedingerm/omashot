@@ -14,6 +14,7 @@ User-facing behavior is documented in `README.md`; read it before changing featu
 | `src/main.rs` | CLI `dispatch`, capture geometry, render pipeline (annotation ops → ImageMagick), config validation, unit tests |
 | `src/storage.rs` | History listing, retention cleanup, wallpaper library, ownership checks |
 | `src/background.rs` | The 20 background presets, mesh renderer, thumbnails |
+| `src/keybindings.rs` | Global shortcuts: generated `omashot/hyprland-bindings.lua` plus one marked block in `hypr/bindings.lua` (Omarchy 4 Lua config) |
 | `src/snapshot.rs` | Frozen-desktop snapshots, isolated window capture (spawns `plugin/WindowCapture.qml`) |
 | `plugin/Main.qml` | Launcher window, `IpcHandler` (`target: "omashot"`), quick access, pins, preferences |
 | `plugin/Editor.qml`, `AnnotationGeometry.js` | Annotation editor and its hit-test/geometry helpers |
