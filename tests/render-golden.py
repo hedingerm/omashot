@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='omashot-golden-') as directory:
   [dict(type='arrow',x=10,y=70,x2=110,y2=15,color='#ef4444',width=4)],[dict(type='arrow',x=5,y=40,cx=60,cy=-10,x2=110,y2=45,color='#123456cc',width=5)],
   [dict(type='freehand',points=[dict(x=5+i*2,y=30+(i*7)%30) for i in range(60)],color='#f97316',width=4)],
   [dict(type='freehand',smooth=False,points=[dict(x=5+i*2,y=30+(i*7)%30) for i in range(60)],color='#f9731680',width=6)],
-  [dict(type='step',x=30,y=30,text='3',size=20,color='#ef4444')],
+  [dict(type='step',x=30,y=30,text='3',size=20,color='#ef4444')],[dict(type='step',x=40,y=35,text='12',size=24,color='#6c5ce7',centered=True)],
   *[[T(style=s)] for s in ['standard','outlined','boxed','rounded_boxed','monospaced','monospaced_boxed','rounded']],
   [dict(type='rotate',angle=90)],[dict(type='rotate',angle=33)],[dict(type='flip',axis='horizontal')],[dict(type='flip',axis='vertical')],[dict(type='resize',w=77,h=51)],
   [dict(type='rotate',angle=33),T(),dict(type='filled',x=0,y=0,w=20,h=20,color='#00ff0088')],

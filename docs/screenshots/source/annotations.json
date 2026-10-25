@@ -3,7 +3,7 @@
   {"type": "rectangle", "x": 866, "y": 115, "w": 300, "h": 151, "color": "#ef4565", "width": 5},
   {"type": "arrow", "x": 690, "y": 318, "cx": 800, "cy": 300, "x2": 858, "y2": 240, "color": "#ef4565", "width": 7},
   {"type": "text", "x": 470, "y": 326, "text": "Record week!", "color": "#ef4565", "size": 30, "style": "rounded"},
-  {"type": "step", "x": 520, "y": 150, "text": "1", "color": "#6c5ce7", "size": 28},
-  {"type": "step", "x": 826, "y": 150, "text": "2", "color": "#6c5ce7", "size": 28},
+  {"type": "step", "x": 520, "y": 150, "text": "1", "color": "#6c5ce7", "size": 28, "centered": true},
+  {"type": "step", "x": 826, "y": 150, "text": "2", "color": "#6c5ce7", "size": 28, "centered": true},
   {"type": "background", "mode": "gradient", "preset": 5, "gradient_version": 2, "padding": 110, "radius": 22, "shadow": true, "shadow_strength": 0.55, "inset": 0, "auto_balance": true}
 ]

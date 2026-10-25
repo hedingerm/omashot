@@ -1451,6 +1451,8 @@ Rectangle {
                                             strength: root.redactionStrength,
                                             points: points
                                         };
+                                        if (root.tool === "step")
+                                            result.centered = true;
                                         if (root.tool === "highlight") {
                                             result.h = Math.max(result.h, root.strokeWidth * 4);
                                             result.y = (startY + endY - result.h) / 2;

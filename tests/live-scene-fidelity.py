@@ -10,7 +10,7 @@ def op(t,**k):
 cases={
  'rectangle':[op('rectangle')],'filled':[op('filled',color='#3b82f6')],'ellipse':[op('ellipse')],'line':[op('line')],'arrow':[op('arrow')],
  'curved arrow':[op('arrow',cx=200,cy=380)],'freehand':[op('freehand',points=[{'x':120+i*14,'y':200+((i*41)%90)}for i in range(30)])],
- 'text':[op('text')],'text boxed':[op('text',style='boxed',w=0,h=0)],'text outlined':[op('text',style='outlined')],'step':[op('step',text='3')],
+ 'text':[op('text')],'text boxed':[op('text',style='boxed',w=0,h=0)],'text outlined':[op('text',style='outlined')],'step':[op('step',text='3')],'step centered':[op('step',text='3',centered=True)],'step centered 12':[op('step',text='12',centered=True)],
  'highlight':[op('highlight',color='#ffe629')],'redact':[op('redact')],'pixelate':[op('pixelate')],'blur':[op('blur')],'spotlight':[op('spotlight')],
  'background':[op('rectangle'),bg],'background inset':[op('rectangle'),dict(bg,inset=24,radius=24,preset=7)],'background solid':[dict(bg,mode='solid',background_color='#0ea5e9',shadow_strength=.6,shadow_blur=30)],
  'background top-left':[dict(bg,alignment='top-left',aspect_ratio=1.0,padding=80,preset=12)],

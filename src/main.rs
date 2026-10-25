@@ -682,6 +682,47 @@ fn render(input: &Path, ops: &Value, output: &Path) -> Result<Option<Value>> {
                     } else {
                         text
                     };
+                    // Centered steps (new ops) center the label's measured ink on the dot; older ops keep the fixed offset.
+                    let (ax, ay) = if typ == "step" && op["centered"].as_bool() == Some(true) {
+                        let pad = size.ceil() as usize;
+                        let canvas = format!("{}x{}", pad * (text.chars().count() + 2), pad * 3);
+                        let ink = run(
+                            "magick",
+                            &strings(&[
+                                "-size",
+                                &canvas,
+                                "xc:black",
+                                "-fill",
+                                "white",
+                                "-font",
+                                font,
+                                "-pointsize",
+                                &size.to_string(),
+                                "-gravity",
+                                "NorthWest",
+                                "-annotate",
+                                &format!("+{pad}+{pad}"),
+                                &text,
+                                "-trim",
+                                "-format",
+                                "%w %h %X %Y",
+                                "info:",
+                            ]),
+                        )?;
+                        let v: Vec<f64> = ink
+                            .split_whitespace()
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
+                        if v.len() != 4 {
+                            return Err(err("Could not measure step label"));
+                        }
+                        let pad = pad as f64;
+                        (x - (v[2] - pad) - v[0] / 2., y - (v[3] - pad) - v[1] / 2.)
+                    } else if typ == "step" {
+                        (x - size * 0.3, y - size * 0.65)
+                    } else {
+                        (x, y)
+                    };
                     let outlined = typ == "text" && style == "outlined";
                     args.extend(strings(&[
                         "-stroke",
@@ -695,11 +736,7 @@ fn render(input: &Path, ops: &Value, output: &Path) -> Result<Option<Value>> {
                         "-gravity",
                         "NorthWest",
                         "-annotate",
-                        &format!(
-                            "+{}+{}",
-                            if typ == "step" { x - size * 0.3 } else { x },
-                            if typ == "step" { y - size * 0.65 } else { y }
-                        ),
+                        &format!("+{ax}+{ay}"),
                         &text,
                     ]));
                 }

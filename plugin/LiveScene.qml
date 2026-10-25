@@ -201,8 +201,10 @@ Item {
                 }
                 Text {
                     id: label
-                    x: (annotation.type === "step" ? parent.x0 - parent.size * .3 : parent.x0) + .5
-                    y: (annotation.type === "step" ? parent.y0 - parent.size * .65 : parent.y0) - baselineOffset - ink.tightBoundingRect.y
+                    // Centered steps center the label's ink on the dot; older ops keep the fixed offset.
+                    readonly property bool centered: annotation.type === "step" && annotation.shown.centered === true
+                    x: (centered ? parent.x0 - ink.tightBoundingRect.x - ink.tightBoundingRect.width / 2 : annotation.type === "step" ? parent.x0 - parent.size * .3 : parent.x0) + .5
+                    y: (centered ? parent.y0 - ink.tightBoundingRect.height / 2 : annotation.type === "step" ? parent.y0 - parent.size * .65 : parent.y0) - baselineOffset - ink.tightBoundingRect.y
                     text: parent.label
                     textFormat: Text.PlainText
                     color: parent.boxed || annotation.type === "step" ? "white" : annotation.ink
