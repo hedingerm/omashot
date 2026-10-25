@@ -14,6 +14,7 @@ function bounds(op) {
     }
     if(op.type==='freehand' && op.points && op.points.length){var px=op.points.map(function(p){return p.x}),py=op.points.map(function(p){return p.y});return{x:Math.min.apply(null,px),y:Math.min.apply(null,py),w:Math.max(1,Math.max.apply(null,px)-Math.min.apply(null,px)),h:Math.max(1,Math.max.apply(null,py)-Math.min.apply(null,py))}}
     if(op.type==='step'){var r=size*.8;return{x:x-r,y:y-r,w:r*2,h:r*2}}
+    if(op.type==='text'&&w>0&&h>0)return {x:x,y:y,w:w,h:h}
     if(op.type==='text'){var lines=String(op.text||'').split('\n');w=Math.max(24,w,Math.max.apply(null,lines.map(function(l){return l.length}))*size*.66);h=Math.max(size*1.4,h,lines.length*size*1.4)}
     return {x:x,y:y,w:Math.max(2,w),h:Math.max(2,h)}
 }

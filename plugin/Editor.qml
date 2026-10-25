@@ -321,7 +321,7 @@ Rectangle {
         if (!gestureBefore || selectedIndex < 0)
             return;
         var list = operations.slice();
-        list[selectedIndex] = op;
+        list[selectedIndex] = fitText(op);
         operations = list;
         noteInput(gestureKind);
     }
@@ -350,6 +350,7 @@ Rectangle {
             return;
         var list = snapshot();
         list[selectedIndex][key] = value;
+        fitText(list[selectedIndex]);
         commit(list, "style");
     }
     function deleteSelected() {
@@ -395,10 +396,9 @@ Rectangle {
             text: inlineText.text,
             color: ink,
             size: textSize,
-            style: textStyle,
-            w: 0,
-            h: 0
+            style: textStyle
         };
+        fitText(op);
         if (editingTextIndex >= 0) {
             var list = snapshot();
             list[editingTextIndex] = op;
@@ -647,6 +647,33 @@ Rectangle {
     }
     function previewTimerStart() {
         previewTimer.restart();
+    }
+    TextMetrics {
+        id: textInk
+    }
+    FontMetrics {
+        id: textLine
+    }
+    // Stores the ink box of a text op as w/h, as LiveScene draws it (ink top at y), so the selection and boxed styles hug the text.
+    function fitText(op) {
+        if (!op || op.type !== "text")
+            return op;
+        var style = op.style || "standard", lines = String(op.text || "").split("\n"), right = 0, first = null, last = null;
+        textInk.font = textLine.font = Qt.font({
+            family: style.indexOf("monospaced") === 0 ? "monospace" : "sans-serif",
+            pixelSize: Geometry.clamp(Number(op.size || 28), 6, 500),
+            bold: style === "rounded"
+        });
+        lines.forEach(function (line) {
+            textInk.text = line || " ";
+            var r = textInk.tightBoundingRect;
+            right = Math.max(right, r.x + r.width);
+            first = first || r;
+            last = r;
+        });
+        op.w = Math.max(8, Math.ceil(right));
+        op.h = Math.max(8, Math.ceil(-first.y + (lines.length - 1) * textLine.lineSpacing + Math.max(0, last.y + last.height)));
+        return op;
     }
     Timer {
         id: previewTimer
