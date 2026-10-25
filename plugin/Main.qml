@@ -334,6 +334,8 @@ Item {
             root.status = "Done";
             if (root.captureActionQueue.length)
                 captureActionTimer.restart();
+            if (root.job === "post-quick-copy")
+                quickAccess.confirmCopy();
             if (root.job.startsWith("post-"))
                 return;
             if (root.job === "export") {
@@ -1415,7 +1417,7 @@ Item {
             root.dismissQuick(id);
         }
         onCopyRequested: function (path) {
-            root.queueCaptureAction(["copy", path], "post-copy");
+            root.queueCaptureAction(["copy", path], "post-quick-copy");
         }
         onSaveRequested: function (path) {
             root.exportSource = path;

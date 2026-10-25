@@ -17,6 +17,8 @@ Item {
     property int thumbnailWidth: 160
     property int timeoutSeconds: 0
     property bool dismissAfterDrop: true
+    property string pendingCopy: ""
+    property string copiedPath: ""
     readonly property var targetScreen: {
         let name = outputName === "active" ? (Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "") : outputName;
         return Quickshell.screens.find(function (s) {
@@ -35,16 +37,25 @@ Item {
     function hideTemporarily() {
         collapsed = true;
     }
+    function confirmCopy() {
+        copiedPath = pendingCopy;
+        copiedTimer.restart();
+    }
+    Timer {
+        id: copiedTimer
+        interval: 1400
+        onTriggered: root.copiedPath = ""
+    }
     component CornerButton: IconButton {
-        size: 20
-        iconSize: 12
+        size: 28
+        iconSize: 16
         background: Rectangle {
             radius: width / 2
             color: parent.hovered ? Theme.raised : Theme.alpha(Theme.window, 0.92)
         }
         contentItem: Icon {
             name: parent.iconName
-            size: 12
+            size: 16
             color: Theme.text
         }
     }
@@ -75,6 +86,7 @@ Item {
             anchors.margins: 8
             contentWidth: width
             contentHeight: stack.implicitHeight
+            interactive: contentHeight > height
             clip: true
             Column {
                 id: stack
@@ -88,7 +100,7 @@ Item {
                         property bool preparingDrag: false
                         readonly property bool showActions: hover.hovered && !preparingDrag && !dragArea.drag.active
                         width: stack.width
-                        height: Math.max(68, Math.min(width * 0.85, width * Math.max(1, modelData.height || 90) / Math.max(1, modelData.width || 160)))
+                        height: Math.max(96, Math.min(width * 0.85, width * Math.max(1, modelData.height || 90) / Math.max(1, modelData.width || 160)))
                         radius: 9
                         color: Theme.surface
                         border.width: 1
@@ -158,38 +170,43 @@ Item {
                         }
                         Column {
                             anchors.centerIn: parent
-                            spacing: 5
+                            spacing: 6
                             visible: card.showActions
                             Button {
-                                text: "Copy"
-                                implicitWidth: 48
-                                implicitHeight: 22
-                                padding: 3
+                                text: root.copiedPath === card.modelData.path ? "Copied" : "Copy"
+                                implicitWidth: 72
+                                implicitHeight: 30
+                                padding: 4
                                 background: Rectangle {
-                                    radius: 11
+                                    radius: 15
                                     color: parent.hovered ? Theme.accentHover : Theme.accent
                                 }
                                 contentItem: Text {
                                     text: parent.text
-                                    font.pixelSize: 11
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
                                     color: Theme.accentText
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
-                                onClicked: root.copyRequested(card.modelData.path)
+                                onClicked: {
+                                    root.pendingCopy = card.modelData.path;
+                                    root.copyRequested(card.modelData.path);
+                                }
                             }
                             Button {
                                 text: "Save"
-                                implicitWidth: 48
-                                implicitHeight: 22
-                                padding: 3
+                                implicitWidth: 72
+                                implicitHeight: 30
+                                padding: 4
                                 background: Rectangle {
-                                    radius: 11
+                                    radius: 15
                                     color: parent.hovered ? Theme.accentHover : Theme.accent
                                 }
                                 contentItem: Text {
                                     text: parent.text
-                                    font.pixelSize: 11
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
                                     color: Theme.accentText
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
