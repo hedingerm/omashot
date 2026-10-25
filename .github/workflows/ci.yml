@@ -11,11 +11,12 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Arch matches Omarchy and ships ImageMagick 7 (`magick`), which the render tests use.
+    container: archlinux:latest
     steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm --needed rust imagemagick fontconfig ttf-dejavu python jq git
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --check
