@@ -8,7 +8,7 @@ Use it for refactors and performance work in the render path; intended output ch
 import concurrent.futures as cf,hashlib,json,os,pathlib,subprocess,sys,tempfile
 root=pathlib.Path(__file__).resolve().parents[1];args=sys.argv[1:]
 def opt(name,default):return args[args.index(name)+1] if name in args else default
-base,binary,jobs=opt('--base','HEAD'),opt('--binary',str(root/'target/release/omashot')),int(opt('-j','4'))
+base,binary,jobs=opt('--base','HEAD'),opt('--binary',str(root/'target/release/omashot')),int(opt('-j',str(os.cpu_count() or 4)))
 def sh(*a,**k):return subprocess.run([str(x) for x in a],check=True,capture_output=True,**k)
 with tempfile.TemporaryDirectory(prefix='omashot-identity-') as td:
  td=pathlib.Path(td);reference=opt('--base-binary',None)
@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='omashot-identity-') as td:
  inp=td/'in';inp.mkdir();I={}
  def mk(name,*a):p=inp/name;sh('magick',*a,p);I[name]=str(p)
  # Synthetic screen-like source: noise texture, UI blocks and text.
- mk('big.png','-size','3840x2160','plasma:#1a1b26-#7aa2f7','-seed','7','-fill','#e0e0e0','-draw','rectangle 200,150 1800,900','-fill','#22c55e','-draw','roundrectangle 2000,300 3400,1200 40,40','-fill','#111111','-pointsize','64','-annotate','+260,400','Synthetic 100% @x','-define','png:color-type=2')
+ mk('big.png','-seed','7','-size','960x540','plasma:#1a1b26-#7aa2f7','-resize','3840x2160!','-fill','#e0e0e0','-draw','rectangle 200,150 1800,900','-fill','#22c55e','-draw','roundrectangle 2000,300 3400,1200 40,40','-fill','#111111','-pointsize','64','-annotate','+260,400','Synthetic 100% @x','-define','png:color-type=2')
  cap=I['big.png']
  mk('rgb.png',cap,'-crop','640x400+300+200','+repage','-define','png:color-type=2')
  mk('rgba.png',cap,'-crop','640x400+900+500','+repage','-alpha','set','-channel','A','-fx','0.3+0.7*i/w','+channel','-define','png:color-type=6')
@@ -89,12 +89,22 @@ with tempfile.TemporaryDirectory(prefix='omashot-identity-') as td:
   d=td/'xdg'/tag;env=dict(os.environ,XDG_DATA_HOME=str(d/'data'),XDG_CONFIG_HOME=str(d/'config'))
   p=subprocess.run([exe,'render',I[name],json.dumps(ops),'--preview'],env=env,capture_output=True,text=True)
   if p.returncode:return ('ERR',p.stdout.strip())
-  r=json.loads(p.stdout);path=r.pop('path');px=sh('magick',path,'-depth','16','rgba:-').stdout;os.remove(path)
-  return (r,hashlib.sha256(px).hexdigest())
- def one(n):name,cid,ops=cases[n];return f'{name}:{cid}',run(reference,f'a{n}',name,ops),run(binary,f'b{n}',name,ops)
+  r=json.loads(p.stdout);path=r.pop('path');return (r,path)
+ def pixels(path):return hashlib.sha256(sh('magick',path,'-depth','16','rgba:-').stdout).hexdigest()
+ def compare(n,a,b):
+  name,cid,_=cases[n]
+  if a[0]!='ERR' and b[0]!='ERR':
+   # Byte-identical files have identical pixels; decode only when the encodings differ.
+   pa,pb=a[1],b[1];same=pathlib.Path(pa).read_bytes()==pathlib.Path(pb).read_bytes()
+   a,b=(a[0],'same'),(b[0],'same' if same or pixels(pa)==pixels(pb) else 'pixels differ');os.remove(pa);os.remove(pb)
+  return f'{name}:{cid}',a,b
  bad=errors=0
+ # Each binary's render is its own task, and the slow 4K cases start first, so no single case is the tail.
+ order=sorted(range(len(cases)),key=lambda n:cases[n][0]!='big.png')
  with cf.ThreadPoolExecutor(jobs) as ex:
-  for k,a,b in ex.map(one,range(len(cases))):
+  jobs={(n,side):ex.submit(run,reference if side=='a' else binary,f'{side}{n}',cases[n][0],cases[n][2]) for n in order for side in 'ab'}
+  for n in range(len(cases)):
+   k,a,b=compare(n,jobs[n,'a'].result(),jobs[n,'b'].result())
    if a!=b:bad+=1;print('DIFF',k,a,b,flush=True)
    elif a[0]=='ERR':errors+=1;print('ERR (both)',k,a[1][:120])
  print(f'{len(cases)} cases, {bad} differ, {errors} rejected by both binaries')
