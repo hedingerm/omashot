@@ -13,10 +13,15 @@ def sh(*a,**k):return subprocess.run([str(x) for x in a],check=True,capture_outp
 with tempfile.TemporaryDirectory(prefix='omashot-identity-') as td:
  td=pathlib.Path(td);reference=opt('--base-binary',None)
  if not reference:
-  wt=td/'base';sh('git','-C',root,'worktree','add','--detach',wt,base)
-  try:sh('cargo','build','--release','--locked','--quiet',cwd=wt,env=dict(os.environ,CARGO_TARGET_DIR=str(root/'target/render-identity')))
-  finally:subprocess.run(['git','-C',str(root),'worktree','remove','--force',str(wt)],capture_output=True)
-  reference=str(root/'target/render-identity/release/omashot')
+  # A commit's binary never changes: cache it per commit so repeated runs against the same baseline skip the build.
+  sha=sh('git','-C',root,'rev-parse',base+'^{commit}',text=True).stdout.strip();cache=root/'target/render-identity';reference=cache/f'omashot-{sha}'
+  if not reference.exists():
+   wt=td/'base';sh('git','-C',root,'worktree','add','--detach',wt,sha)
+   try:sh('cargo','build','--release','--locked','--quiet',cwd=wt,env=dict(os.environ,CARGO_TARGET_DIR=str(cache)))
+   finally:subprocess.run(['git','-C',str(root),'worktree','remove','--force',str(wt)],capture_output=True)
+   tmp=cache/f'.omashot-{sha}.{os.getpid()}';tmp.write_bytes((cache/'release/omashot').read_bytes());tmp.chmod(0o755);tmp.replace(reference)
+   for old in sorted(cache.glob('omashot-*'),key=lambda f:f.stat().st_mtime)[:-4]:old.unlink(missing_ok=True)
+  reference=str(reference)
  inp=td/'in';inp.mkdir();I={}
  def mk(name,*a):p=inp/name;sh('magick',*a,p);I[name]=str(p)
  # Synthetic screen-like source: noise texture, UI blocks and text.
