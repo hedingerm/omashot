@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0}body{font-family:Inter,"Noto Sans",sans-serif;background:#f5f6fa;color:#1d2133;width:1200px;height:760px;display:flex}
+aside{width:220px;background:#151a2c;color:#c9cde0;padding:28px 18px}aside h1{color:#fff;font-size:18px;display:flex;gap:10px;align-items:center;margin-bottom:34px}
+.logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#7c6cf6,#5b8cff);display:grid;place-items:center;color:#fff;font-weight:700}
+nav a{display:block;padding:11px 14px;border-radius:8px;font-size:14px;margin-bottom:4px}nav a.on{background:#262d48;color:#fff}
+main{flex:1;padding:34px 40px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px}
+h2{font-size:26px}.sub{color:#7a7f95;font-size:14px;margin-top:6px}.btn{background:#6c5ce7;color:#fff;padding:11px 18px;border-radius:9px;font-size:14px;font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:20px}.card{background:#fff;border-radius:14px;padding:20px;box-shadow:0 1px 3px #0001}
+.card small{color:#7a7f95;font-size:13px}.card b{display:block;font-size:30px;margin:8px 0 6px}.up{color:#16a34a;font-size:12px}.warn{color:#d97706;font-size:12px}
+.chart{background:#fff;border-radius:14px;padding:20px;height:250px;margin-bottom:20px;box-shadow:0 1px 3px #0001}.chart h3{font-size:15px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:13px}td{padding:9px 4px;border-top:1px solid #eef0f5}.pill{background:#ece9fe;color:#5b4bd6;border-radius:99px;padding:4px 10px;font-size:12px}
+.mail{font-family:monospace;color:#444}
+</style></head><body>
+<aside><h1><span class="logo">N</span>Northstar</h1><nav><a class="on">Overview</a><a>Projects</a><a>Analytics</a><a>Team</a><a>Billing</a><a>Settings</a></nav></aside>
+<main><header><div><h2>Project overview</h2><div class="sub">A clear view of what your team is building.</div></div><span class="btn">+ New project</span></header>
+<div class="cards"><div class="card"><small>Active projects</small><b>24</b><span class="up">+4 this month</span></div><div class="card"><small>Completed tasks</small><b>186</b><span class="up">+18% from last week</span></div><div class="card"><small>Team velocity</small><b>92%</b><span class="warn">Looking good</span></div></div>
+<div class="chart"><h3>Activity this month</h3><svg width="100%" height="190" viewBox="0 0 860 190"><g stroke="#eef0f5"><line x1="0" y1="40" x2="860" y2="40"/><line x1="0" y1="95" x2="860" y2="95"/><line x1="0" y1="150" x2="860" y2="150"/></g>
+<polyline fill="none" stroke="#7c6cf6" stroke-width="3" points="0,160 70,140 140,150 210,115 280,120 350,85 420,100 490,60 560,72 630,45 700,30 770,40 860,15"/>
+<polyline fill="none" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6 6" points="0,170 70,165 140,155 210,150 280,140 350,135 420,125 490,118 560,110 630,100 700,96 770,90 860,80"/></svg></div>
+<div class="card"><table><tr><td><b style="font-size:13px;display:inline">Recent projects</b></td><td></td><td></td><td></td></tr>
+<tr><td>Website redesign</td><td>Design team</td><td class="mail">anna.keller@northstar.dev</td><td><span class="pill">In progress</span></td></tr>
+<tr><td>Mobile experience</td><td>Product team</td><td class="mail">jonas.meier@northstar.dev</td><td><span class="pill">On track</span></td></tr></table></div>
+</main></body></html>

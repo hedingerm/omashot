@@ -47,6 +47,16 @@ Then run the tests relevant to your change (after `cargo build`):
 - Headless: `tests/render-regression.py`, `tests/history-service.py`, `tests/editor-*-smoke.py` (offscreen Qt, needs Quickshell).
 - Live Wayland session: `tests/ui-smoke.py`, `tests/capture-*-smoke.py`, `tests/isolated-window-smoke.py`, `tests/scroll-smoke.py`. These open real windows, and `ui-smoke.py` overwrites your clipboard.
 
+## Screenshots
+
+The README images are generated, not hand-made. After a visible UI or rendering change, run:
+
+```bash
+./scripts/screenshots.sh
+```
+
+It renders a synthetic demo dashboard (`docs/screenshots/source/dashboard.html`), applies `annotations.json` with the real backend, grabs the editor offscreen and briefly opens the launcher on Wayland, then rewrites `docs/screenshots/*.png`. It uses temporary data directories and only captures OmaShot's own windows, never your desktop. Check the result and commit the changed images with your pull request.
+
 Tests use temporary `XDG_DATA_HOME`/`XDG_CONFIG_HOME` directories. Keep it that way for new tests; never touch real user data.
 
 ## Pull requests

@@ -251,6 +251,8 @@ bash tests/install.sh
 omarchy plugin validate ./plugin
 ```
 
+After UI changes, `./scripts/screenshots.sh` regenerates every image in this README from synthetic demo content.
+
 The `tests/` folder also has headless render and editor tests plus live Wayland smoke tests (which open real windows and overwrite your clipboard). [CONTRIBUTING.md](CONTRIBUTING.md) explains when to run which, and [AGENTS.md](AGENTS.md) maps the codebase.
 
 <details>

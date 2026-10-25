@@ -10,3 +10,4 @@
 - [ ] `bash tests/install.sh`
 - [ ] Relevant smoke tests in `tests/`
 - [ ] README updated if user-facing behavior changed
+- [ ] `scripts/screenshots.sh` run if the UI or rendering changed
