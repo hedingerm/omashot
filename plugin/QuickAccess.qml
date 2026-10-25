@@ -14,7 +14,7 @@ Item {
     property bool collapsed: false
     property string corner: "bottom-right"
     property string outputName: "active"
-    property int thumbnailWidth: 160
+    property int thumbnailWidth: 240
     property int timeoutSeconds: 0
     property bool dismissAfterDrop: true
     property string pendingCopy: ""
@@ -75,7 +75,7 @@ Item {
             top: 30
             bottom: 20
         }
-        implicitWidth: Math.max(100, Math.min(320, root.thumbnailWidth)) + 16
+        implicitWidth: Math.max(100, Math.min(480, root.thumbnailWidth)) + 16
         implicitHeight: Math.min(stack.implicitHeight + 16, (screen ? screen.height : 1000) - 80)
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay

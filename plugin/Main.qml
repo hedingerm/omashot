@@ -420,7 +420,7 @@ Item {
                 prefAutoEdit.checked = !!data.annotate_after_capture;
                 prefAutoPin.checked = !!data.pin_after_capture;
                 prefExportDirectory.text = data.export_directory || "";
-                prefOverlaySize.value = data.overlay_size || 160;
+                prefOverlaySize.value = data.overlay_size || 240;
                 prefOverlayScreen.currentIndex = Math.max(0, prefOverlayScreen.model.indexOf(data.overlay_screen || "active"));
                 prefDismissDrop.checked = data.dismiss_after_drop !== false;
                 prefFreeze.checked = data.freeze_capture !== false;
@@ -1378,7 +1378,7 @@ Item {
                         SpinBox {
                             id: prefOverlaySize
                             from: 100
-                            to: 320
+                            to: 480
                             stepSize: 10
                             editable: true
                         }
@@ -1440,7 +1440,7 @@ Item {
         suspended: root.capturing || scrollSurface.active
         corner: root.preferences.overlay_position || "bottom-right"
         outputName: root.preferences.overlay_screen || "active"
-        thumbnailWidth: Number(root.preferences.overlay_size || 160)
+        thumbnailWidth: Number(root.preferences.overlay_size || 240)
         timeoutSeconds: Number(root.preferences.overlay_timeout || 0)
         dismissAfterDrop: root.preferences.dismiss_after_drop !== false
         onDismissRequested: function (id) {
