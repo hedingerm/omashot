@@ -92,6 +92,10 @@ finally:
    if f.stat().st_mtime>=started:f.unlink()
  if proc:proc.kill()
 print(json.dumps(results,indent=1))
+# Input that never reached the window (focus stolen, pointer outside) records nothing; that is a failure, not a pass.
+kinds={'draw-move','draw-commit','move','resize','undo','redo','background'}
+unmeasured={k:sorted(kinds-set(r)) for k,r in results.items() if kinds-set(r)}
+assert len(results)==3 and not unmeasured,f'interactions not measured: {unmeasured or "no results"}'
 if limit:
  bad=[(k,kind,v['p90Ms']) for k,r in results.items() for kind,v in r.items() if isinstance(v,dict) and v['p90Ms']>limit]
  assert not bad,f'interactions slower than {limit} ms at p90: {bad}'

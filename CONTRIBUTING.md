@@ -32,6 +32,8 @@ Stop standalone `qs` instances before editing QML and start a fresh one afterwar
 
 ## Checks
 
+`scripts/verify.py` picks the checks below that match your changes, builds the binaries they use and runs them (`--full` runs everything, `--list` shows the checks). The details:
+
 Run these before opening a pull request (CI runs the first four):
 
 ```bash

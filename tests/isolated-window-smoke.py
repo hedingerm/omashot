@@ -28,7 +28,9 @@ ShellRoot { FloatingWindow { title:"OmaShot isolated-window fixture";visible:tru
    # Hyprland outer geometry can include borders excluded from the exported client buffer.
    assert all(abs(result[k]-size)<=round(6*scale) for k,size in zip(['width','height'],expected)),(result,expected)
    alpha=float(subprocess.check_output(['magick',result['path'],'-format','%[fx:p{0,0}.a]','info:'],text=True));assert alpha==0,alpha
-   color=subprocess.check_output(['magick',result['path'],'-format','%[pixel:p{100,100}]','info:'],text=True);assert '230,76,116' in color,color
+   # Exact channels vary by one or two levels between runs (seen 228..230); this checks the real fill, not color management.
+   color=subprocess.check_output(['magick',result['path'],'-format','%[fx:round(255*p{100,100}.r)],%[fx:round(255*p{100,100}.g)],%[fx:round(255*p{100,100}.b)]','info:'],text=True)
+   assert all(abs(int(v)-e)<=3 for v,e in zip(color.split(','),[230,76,116])),color
   finally:
    scene.terminate()
    try:scene.wait(timeout=5)
