@@ -217,6 +217,7 @@ The running shell also accepts commands directly:
 omarchy-shell shell summon omashot '{}'
 omarchy-shell omashot capture region
 omarchy-shell omashot history
+omarchy-shell omashot themeStats   # frame pacing of the last theme fade
 ```
 
 ## Configuration
@@ -232,7 +233,7 @@ Most settings live in the Preferences panel. Under the hood:
 
 **History retention:** captures are deleted after 30 days by default (`0` keeps them forever). Cleanup runs at shell startup, hourly, and on demand with `omashot cleanup`. Exported files and imported wallpapers are never deleted.
 
-**Theme:** OmaShot uses the active Omarchy theme and needs no setup. It reads `~/.local/state/omarchy/current/theme/colors.toml` and watches `theme.name`, which `omarchy theme set` rewrites after each switch. Every window, menu, dialog, pin, quick-access card and capture overlay then fades to the new palette over the same 420 ms as the Omarchy shell, light themes included. Annotation colors, background presets and your captures never change with the theme. Set `OMASHOT_THEME_PATH` to another `current`-style directory to preview a theme without switching your desktop.
+**Theme:** OmaShot uses the active Omarchy theme and needs no setup. Inside the Omarchy shell it follows the shell's own palette, so it fades in the same frame as the bar. Standalone, it reads `~/.local/state/omarchy/current/theme/colors.toml` and watches `theme.name`, which `omarchy theme set` rewrites after each switch. Every window, menu, dialog, pin, quick-access card and capture overlay fades to the new palette over the same 420 ms as the shell, light themes included. Annotation colors, background presets and your captures never change with the theme. Set `OMASHOT_THEME_PATH` to another `current`-style directory to preview a theme without switching your desktop.
 
 **Desktop icons:** if you use a desktop-icon provider, set `hide_desktop_icons: true` with `desktop_hide_argv` and `desktop_restore_argv` command arrays to hide icons while capturing. Commands run directly, without a shell.
 

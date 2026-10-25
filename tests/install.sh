@@ -54,6 +54,16 @@ PY_QMLDIR
 PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_home/backend"
 [[ $(grep -Ec '^omarchy restart shell$' "$TEST_UPDATE_LOG") == 2 ]]
 [[ -f "$HOME/.config/omarchy/plugins/omashot/qmldir" && -f "$HOME/.config/omarchy/plugins/omashot/Theme.qml" ]]
+# Singletons outlive a plugin rescan, so an updated Theme.qml restarts the host as well.
+python3 - <<'PY_SINGLETON'
+import hashlib,json,pathlib
+h=pathlib.Path.home();receipt=h/'.local/share/omashot/install.json'
+v=json.loads(receipt.read_text());file=h/'.config/omarchy/plugins/omashot/Theme.qml'
+file.write_text(file.read_text()+'// older release\n');v['files'][str(file)]=hashlib.sha256(file.read_bytes()).hexdigest();receipt.write_text(json.dumps(v))
+PY_SINGLETON
+PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_home/backend"
+[[ $(grep -Ec '^omarchy restart shell$' "$TEST_UPDATE_LOG") == 3 ]]
+cmp -s "$repo/plugin/Theme.qml" "$HOME/.config/omarchy/plugins/omashot/Theme.qml"
 
 # Capture data and unrelated files must survive uninstall. Modified installed code survives too.
 mkdir -p "$XDG_DATA_HOME/omashot"

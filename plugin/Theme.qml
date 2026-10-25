@@ -28,7 +28,7 @@ QtObject {
 
     // Surfaces step from background toward foreground, so light themes work unchanged.
     readonly property color window: background
-    readonly property color sunken: mix(background, "#000000", light ? 0.06 : 0.22)
+    readonly property color sunken: mix(background, "#000000", 0.06 + 0.16 * (1 - luminance(background)))
     readonly property color panel: mix(background, foreground, 0.045)
     readonly property color surface: mix(background, foreground, 0.085)
     readonly property color raised: mix(background, foreground, 0.14)
@@ -41,10 +41,11 @@ QtObject {
     readonly property color accentHover: mix(accent, foreground, 0.2)
     readonly property color accentPressed: mix(accent, background, 0.22)
     readonly property color accentSoft: mix(background, accent, 0.22)
-    readonly property color accentText: luminance(accent) > 0.45 ? darkest : lightest
+    // Continuous rather than a threshold flip, so text on accent never snaps mid-fade.
+    readonly property color accentText: mix(darkest, lightest, Math.max(0, Math.min(1, (0.45 - luminance(accent)) * 10 + 0.5)))
     readonly property color dangerSoft: mix(background, danger, 0.25)
-    readonly property color darkest: light ? foreground : background
-    readonly property color lightest: light ? background : foreground
+    readonly property color darkest: luminance(foreground) < luminance(background) ? foreground : background
+    readonly property color lightest: luminance(foreground) < luminance(background) ? background : foreground
     readonly property color scrim: alpha(background, 0.5)
 
     // Fusion palette for Qt Quick Controls. Assign with `palette: Theme.controls.palette`
@@ -97,6 +98,7 @@ QtObject {
         return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     }
 
+    property string loaded: ""
     function load(raw) {
         var values = {};
         String(raw || "").split("\n").forEach(function (line) {
@@ -110,18 +112,74 @@ QtObject {
                     return values[keys[i]];
             return fallback;
         }
-        background = pick(["background", "color0"], background);
-        foreground = pick(["foreground", "color7"], foreground);
-        accent = pick(["accent", "color4", "blue"], accent);
-        danger = pick(["red", "color1"], danger);
+        // Behaviors keep reading the old value mid-fade, so compare the incoming theme instead.
+        // Inside omarchy-shell its palette wins: the shell may apply colors over IPC that differ from disk.
+        var next = shell ? [shell.background.toString(), shell.foreground.toString(), shell.accent.toString(), shell.urgent.toString()] : [pick(["background", "color0"], background), pick(["foreground", "color7"], foreground), pick(["accent", "color4", "blue"], accent), pick(["red", "color1"], danger)];
+        if (ready && next.join() !== loaded)
+            trackFade();
+        loaded = next.join();
+        background = next[0];
+        foreground = next[1];
+        accent = next[2];
+        danger = next[3];
         warning = pick(["yellow", "color3"], warning);
         success = pick(["green", "color2"], success);
-        light = values.mode ? values.mode === "light" : luminance(Qt.color(background)) > 0.5;
+        light = shell || !values.mode ? luminance(Qt.color(next[0])) > 0.5 : values.mode === "light";
         ready = true;
+    }
+
+    // Inside omarchy-shell, follow the shell's own palette so OmaShot fades in the same frame as
+    // the bar (the shell applies themes over IPC, after theme.name is written). Standalone qs has
+    // no qs.Commons; ShellPalette then fails to load and theme.name drives updates instead.
+    property QtObject shell: null
+    property Connections shellChanges: Connections {
+        target: root.shell
+        function onChanged() {
+            root.load(root.colors.text());
+            root.colors.reload(); // refresh yellow/green from the swapped theme dir
+        }
+    }
+
+    // Frame pacing of the last fade, for `qs ipc call omashot themeStats`.
+    property var fade: ({})
+    property var fadeGaps: []
+    property real fadeStart: 0
+    property real fadeLast: 0
+    function trackFade() {
+        fadeGaps = [];
+        fadeLast = 0;
+        fadeStart = Date.now();
+        fadeTimer.restart();
+    }
+    property FrameAnimation fadeFrames: FrameAnimation {
+        running: root.fadeTimer.running
+        onTriggered: {
+            var now = Date.now();
+            if (root.fadeLast)
+                root.fadeGaps.push(now - root.fadeLast);
+            root.fadeLast = now;
+        }
+    }
+    property Timer fadeTimer: Timer {
+        interval: root.duration + 60
+        onTriggered: {
+            var g = root.fadeGaps.slice().sort(function (a, b) {
+                return a - b;
+            });
+            root.fade = {
+                frames: g.length,
+                medianMs: g.length ? g[g.length >> 1] : 0,
+                worstMs: g.length ? g[g.length - 1] : 0,
+                source: root.shell ? "omarchy-shell" : "theme.name"
+            };
+        }
     }
 
     // Read synchronously on creation so windows never open with the fallback palette.
     Component.onCompleted: {
+        var probe = Qt.createComponent(Qt.resolvedUrl("ShellPalette.qml"), Component.PreferSynchronous);
+        if (probe.status === Component.Ready)
+            shell = probe.createObject(root);
         load(colors.text());
         publishPalette();
     }
@@ -133,7 +191,7 @@ QtObject {
     }
     property FileView themeName: FileView {
         path: root.statePath + "/theme.name"
-        watchChanges: true
+        watchChanges: !root.shell
         printErrors: false
         onFileChanged: root.colors.reload()
     }

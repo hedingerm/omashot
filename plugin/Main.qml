@@ -465,6 +465,9 @@ Item {
                 scrollHeight: scrollSurface.capturedHeight
             });
         }
+        function themeStats(): string {
+            return JSON.stringify(Theme.fade);
+        }
         function annotate(): void {
             root.beginEditing();
         }

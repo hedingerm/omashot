@@ -49,7 +49,7 @@ Then run the tests relevant to your change (after `cargo build`):
 
 ## Theme colors
 
-All UI colors come from `plugin/Theme.qml`, which follows the active Omarchy theme live. Don't hardcode chrome colors: use its roles (`window`, `panel`, `surface`, `raised`, `border`, `text`, `textMuted`, `accent`, `accentText`, …). Give each new window root and every `Popup`/`Menu`/`Dialog` `palette: Theme.controls.palette`, because popups don't inherit palettes. List new QML files in `plugin/qmldir`, or the `Theme` singleton won't resolve inside omarchy-shell.
+All UI colors come from `plugin/Theme.qml`, which follows the active Omarchy theme live. Don't hardcode chrome colors: use its roles (`window`, `panel`, `surface`, `raised`, `border`, `text`, `textMuted`, `accent`, `accentText`, …). Give each new window root and every `Popup`/`Menu`/`Dialog` `palette: Theme.controls.palette`, because popups don't inherit palettes. List new QML files in `plugin/qmldir`, or the `Theme` singleton won't resolve inside omarchy-shell. Inside the shell, `Theme` takes its base colors from the shell palette through `ShellPalette.qml`. `omarchy-shell omashot themeStats` reports frame pacing of the last fade.
 
 ## Screenshots
 

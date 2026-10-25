@@ -6,11 +6,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- The UI follows the active Omarchy theme live, including light themes. Theme switches fade over 420 ms like the Omarchy shell and hold 60 fps. `OMASHOT_THEME_PATH` previews another theme directory.
+- The UI follows the active Omarchy theme live, including light themes. Inside the Omarchy shell it fades in step with the bar from the shell's own palette and holds the display frame rate. `OMASHOT_THEME_PATH` previews another theme directory.
+- `themeStats` IPC call reports the frame pacing of the last theme fade.
 
 ### Changed
 
-- The installer restarts the Omarchy shell when `qmldir` is new, so new singletons register.
+- The installer restarts the Omarchy shell when `qmldir` is new or a singleton such as `Theme.qml` changed, because singletons survive a plugin rescan.
 - README screenshots are rendered in the Tokyo Night theme (`OMASHOT_SCREENSHOT_THEME` overrides it).
 
 ## [0.4.0] - 2026-10-25
