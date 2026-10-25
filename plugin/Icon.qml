@@ -46,7 +46,6 @@ Image {
             "save": '<path d="M5 3h12l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M7 3v6h9V3M7 21v-8h10v8"/>',
             "pin": '<path d="m9 3 12 12m-9-9-5 5-3 1 8 8 1-3 5-5M3 21l5-5"/>',
             "ocr": '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M7 9V7h10v2m-5-2v10m-3 0h6"/>',
-            "qr": '<path d="M3 3h6v6H3Zm12 0h6v6h-6ZM3 15h6v6H3Zm12 0h3v3h3v3h-6Zm6-3v3m-9-3v3M3 12h3m6-9v3m0 12v3"/>',
             "trash": '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
             "check": '<path d="m4 12 5 5L20 6"/>',
             "more": '<circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/>',

@@ -82,5 +82,11 @@ ShellRoot {
     ocr = json.loads(call([BIN,'ocr',fixture],env)); assert '12345' in ocr['text'],ocr
     qr = temp / 'qr.png'; call(['qrencode','-s','8','-o',qr,'https://example.org/omashot-test'],env)
     decoded = json.loads(call([BIN,'qr',qr],env)); assert decoded['text']=='https://example.org/omashot-test',decoded
+    # Combined recognition prefers a QR code, falls back to OCR and leaves the clipboard alone when both find nothing.
+    both = json.loads(call([BIN,'recognize',qr],env)); assert both=={'kind':'qr','text':'https://example.org/omashot-test'},both
+    both = json.loads(call([BIN,'recognize',fixture],env)); assert both['kind']=='text' and '12345' in both['text'],both
+    blank = temp / 'blank.png'; call(['magick','-size','200x100','xc:white',blank],env)
+    call(['wl-copy','omashot-keep'],env); assert json.loads(call([BIN,'recognize',blank],env))=={'kind':'none','text':''}
+    assert call(['wl-paste','--no-newline'],env)=='omashot-keep'
     call([BIN,'delete',saved],env); assert not saved.exists() and not pathlib.Path(project['source']).exists()
-print('PASS: live QML capture/quick access/editor/pin, project/export/delete, clipboard pixels, OCR and QR')
+print('PASS: live QML capture/quick access/editor/pin, project/export/delete, clipboard pixels, OCR, QR and combined recognition')

@@ -100,8 +100,8 @@ ShellRoot {
             restored=next(c for c in history if c['path']==two['current'])
             ipc('captureverify','restore',restored['path'],restored['width'],restored['height']);wait(lambda s:s['quickCount']==2 and not s['opened'])
             ipc('captureverify','dismissQuick',3);wait(lambda s:s['quickCount']==1)
-            # Direct OCR obtains a frozen screen, crops its region, copies text and discards only its temporary capture.
-            ipc('captureverify','capture','ocr');wait(lambda s:s['selecting'])
+            # Direct recognition obtains a frozen screen, crops its region, falls back to OCR without a QR code, copies text and discards only its temporary capture.
+            ipc('captureverify','capture','text');wait(lambda s:s['selecting'])
             clients=json.loads(subprocess.check_output(['hyprctl','-j','clients'],text=True));window=next(w for w in clients if w['title']=='OmaShot capture flow fixture')
             x,y=window['at'];w,h=window['size'];text_geometry=f'{x+20},{y+40} {min(750,w-40)}x160'
             ipc('captureverify','select',text_geometry)

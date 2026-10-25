@@ -8,8 +8,8 @@ fi
 mode=${1:-open}
 case $mode in
   open|history) ;;
-  region|window|fullscreen|repeat|active|ocr|qr) ;;
-  *) echo 'Usage: omashot-ui [open|history|region|window|fullscreen|repeat|active|ocr|qr]' >&2; exit 2 ;;
+  region|window|fullscreen|repeat|active|text|ocr|qr) ;;
+  *) echo 'Usage: omashot-ui [open|history|region|window|fullscreen|repeat|active|text]' >&2; exit 2 ;;
 esac
 if command -v omarchy-shell >/dev/null && [[ $(omarchy-shell shell summon omashot '{}' 2>/dev/null || true) == ok ]]; then
   ready=0
@@ -21,7 +21,7 @@ if command -v omarchy-shell >/dev/null && [[ $(omarchy-shell shell summon omasho
   if (( ! ready )); then echo 'OmaShot was summoned but its command handler did not become ready.' >&2; exit 1; fi
   case $mode in
     history) exec omarchy-shell omashot history ;;
-    region|window|fullscreen|repeat|active|ocr|qr) exec omarchy-shell omashot capture "$mode" ;;
+    region|window|fullscreen|repeat|active|text|ocr|qr) exec omarchy-shell omashot capture "$mode" ;;
     *) exit 0 ;;
   esac
 fi
@@ -29,7 +29,7 @@ fi
 if qs ipc -p "$plugin" call omashot open >/dev/null 2>&1; then
   case $mode in
     history) exec qs ipc -p "$plugin" call omashot history ;;
-    region|window|fullscreen|repeat|active|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
+    region|window|fullscreen|repeat|active|text|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
     *) exit 0 ;;
   esac
 fi
@@ -40,7 +40,7 @@ for ((attempt=0; attempt<40; attempt++)); do
   if qs ipc -p "$plugin" call omashot open >/dev/null 2>&1; then
     case $mode in
       history) exec qs ipc -p "$plugin" call omashot history ;;
-      region|window|fullscreen|repeat|active|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
+      region|window|fullscreen|repeat|active|text|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
       *) exit 0 ;;
     esac
   fi

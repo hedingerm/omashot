@@ -77,7 +77,7 @@ OmaShot is a native screenshot tool for Omarchy, built as an Omarchy shell plugi
 - **Pins** float above your windows with opacity and click-through
 - Follows the **active Omarchy theme** live, fading with the shell on every switch
 - Square corners like the rest of Omarchy: follows Hyprland's `decoration:rounding`, or force square/rounded in Preferences
-- Local **OCR** (Tesseract) and **QR** decoding straight to the clipboard
+- Local **text and QR recognition** (Tesseract, zbar) straight to the clipboard: one action reads a QR code if there is one, otherwise the text
 - **History** that expires after a configurable number of days
 
 </td>
@@ -156,8 +156,7 @@ Open the launcher with `omashot-ui`, or go straight to a mode:
 | `omashot-ui fullscreen` | Capture the whole screen |
 | `omashot-ui repeat` | Capture the last area again |
 | `omashot-ui history` | Browse previous captures |
-| `omashot-ui ocr` | Select an area and copy its text |
-| `omashot-ui qr` | Select an area and copy the decoded QR code |
+| `omashot-ui text` | Select an area and copy its QR code or, if it has none, its text (`ocr` and `qr` force one) |
 
 ### Keybindings
 
@@ -203,7 +202,7 @@ Select the scrolling part of the window and press Start, then scroll normally. F
 <summary><b>Pins, OCR and QR</b></summary>
 
 - Pins float above normal windows. Hover to move, resize, change opacity or make them click-through.
-- OCR and QR run locally and copy the result. Pick the OCR language in Preferences (requires the matching `tesseract-data-*` package).
+- **Copy text or QR code** runs locally and copies the result. A QR code in the selection wins; otherwise its text is recognized. To get the text around a QR code, select only the text. Pick the OCR language in Preferences (requires the matching `tesseract-data-*` package).
 
 </details>
 
