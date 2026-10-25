@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live Wayland (GPU): the editor's live scene must match the exact backend render closely, so swapping to the exact
 pixels never visibly pops. Grabs LiveScene at 1:1 for each case and compares it with `omashot render`."""
-import json,os,pathlib,shutil,subprocess,sys,tempfile
+import concurrent.futures as cf,json,os,pathlib,shutil,subprocess,sys,tempfile
 root=pathlib.Path(__file__).resolve().parents[1];binary=root/'target/debug/omashot'
 W,H=800,500
 bg={'type':'background','mode':'gradient','preset':2,'gradient_version':2,'padding':48,'inset':0,'radius':16,'shadow':True,'shadow_strength':.35,'shadow_blur':18,'shadow_offset':8,'blur':0,'alignment':'center','auto_balance':True,'aspect_ratio':0}
@@ -28,9 +28,9 @@ with tempfile.TemporaryDirectory(prefix='omashot-fidelity-') as td:
  source=data/'fixture.png'
  subprocess.run(['magick','-size',f'{W}x{H}','gradient:#f4f6fb-#c9d3e6','-fill','#1f2937','-draw','rectangle 40,40 760,90','-fill','#5865f2','-draw','roundrectangle 60,140 360,420 14,14','-fill','#e11d48','-draw','circle 560,280 640,280',str(source)],check=True)
  gradients=json.loads(subprocess.run([str(binary),'backgrounds'],env=env,capture_output=True,text=True,check=True).stdout)
- expected={}
- for name,ops in cases.items():
-  r=json.loads(subprocess.run([str(binary),'render',str(source),json.dumps(ops),'--preview'],env=env,capture_output=True,text=True,check=True).stdout);expected[name]=r
+ # Exact renders run in the background while Quickshell grabs the live scenes.
+ def render(ops):return json.loads(subprocess.run([str(binary),'render',str(source),json.dumps(ops),'--preview'],env=env,capture_output=True,text=True,check=True).stdout)
+ pool=cf.ThreadPoolExecutor(os.cpu_count() or 4);pending={name:pool.submit(render,ops) for name,ops in cases.items()}
  (plugin/'FidelitySmoke.qml').write_text('''import QtQuick
 import Quickshell
 ShellRoot { FloatingWindow {id:win;visible:true;implicitWidth:1000;implicitHeight:700;color:"black"
@@ -48,6 +48,7 @@ ShellRoot { FloatingWindow {id:win;visible:true;implicitWidth:1000;implicitHeigh
 ''')
  out=subprocess.run(['qs','-p',str(plugin/'FidelitySmoke.qml')],env=env,capture_output=True,text=True,timeout=120)
  assert 'FIDELITY_DONE' in out.stdout+out.stderr,out.stdout[-3000:]+out.stderr[-3000:]
+ expected={name:f.result() for name,f in pending.items()};pool.shutdown()
  bad=[];report=[]
  for i,(name,ops) in enumerate(cases.items()):
   live=td/f'live-{i}.png';exact=expected[name]

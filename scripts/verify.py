@@ -8,8 +8,9 @@ timeout and its output in a log file, and reports PASS/FAIL/BLOCKED/SKIP. Exits 
   scripts/verify.py --shell         add real omarchy-shell checks (installed plugin must match this tree)
   scripts/verify.py CHECK...        only the named checks or groups;  --list shows them
   --no-live  skip live Wayland checks (reported, never a full pass)   --keep  keep logs on success   --why  explain selection
+  --serial   run one check at a time (default: offscreen checks in parallel with the serial live lane, timing gates last)
 See .agents/skills/verify-project/SKILL.md."""
-import json,os,pathlib,re,shutil,signal,subprocess,sys,tempfile,time
+import concurrent.futures as cf,json,os,pathlib,re,shutil,signal,subprocess,sys,tempfile,threading,time
 root=pathlib.Path(__file__).resolve().parents[1]
 LIVE_TOOLS=['grim','wl-paste','wl-copy','qrencode','zbarimg','tesseract','hyprctl']
 # id: (group, command, prerequisites, binaries, timeout s)
@@ -44,12 +45,16 @@ CHECKS={
  'shell-current':('shell',None,['wayland','shell'],['release'],30),
  'shell-latency':('shell',py('editor-latency-live','--shell','--max-ms','50'),['wayland','shell','qs'],['release'],1500),
 }
+# Timing gates run alone after everything else; other live checks share the desktop (focus, clipboard), so one at a time.
+TIMED={'theme-live','editor-latency','shell-latency'}
+CARGO={'clippy','cargo-test'}  # share cargo's build lock; run in one lane
 GROUPS={g:[c for c,v in CHECKS.items() if v[0]==g] for g in ['static','headless','identity','live','shell']}
 FULL=GROUPS['static']+GROUPS['headless']+GROUPS['identity']+GROUPS['live']
 EDITOR=['editor-events','editor-objects','editor-narrow','editor-background','editor-live','live-scene-fidelity','editor-latency','ui-smoke']
 # First matching rule wins per path; static checks always run. Unknown paths select FULL.
 RULES=[
- (r'^(src/|Cargo\.(toml|lock)$|build\.rs$)',FULL),
+ # The timing gates measure QML input/fade paths; backend changes reach them only through --full.
+ (r'^(src/|Cargo\.(toml|lock)$|build\.rs$)',[c for c in FULL if c not in TIMED]),
  (r'^(scripts/verify\.py|\.agents/skills/verify-project/)',FULL),
  (r'^plugin/(Editor\.qml|LiveScene\.qml|AnnotationGeometry\.js|BackgroundPanel\.qml)$',EDITOR),
  (r'^plugin/CaptureSelector\.qml$',['capture-selector','capture-flow','ui-smoke']),
@@ -126,22 +131,23 @@ class Clipboard:
  def restore(self):
   if self.type:subprocess.Popen(['wl-copy','--type',self.type],stdin=self.file.open('rb'),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
   else:subprocess.run(['wl-copy','--clear'],timeout=5)
+RUNNING=set();STOP=threading.Event()
+def kill(p):
+ try:os.killpg(p.pid,signal.SIGTERM);p.wait(5)
+ except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait()
+ except ProcessLookupError:pass
 def run(cmd,log,timeout):
  # Output goes to a file, never a pipe: a wl-copy daemon spawned by a test would inherit the pipe and hang the run.
  with log.open('wb') as out:
-  p=subprocess.Popen(cmd,cwd=root,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,start_new_session=True)
+  p=subprocess.Popen(cmd,cwd=root,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,start_new_session=True);RUNNING.add(p)
   try:return p.wait(timeout=timeout)
-  except BaseException as e:
-   try:os.killpg(p.pid,signal.SIGTERM);p.wait(5)
-   except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait()
-   except ProcessLookupError:pass
-   if isinstance(e,subprocess.TimeoutExpired):return 'timeout'
-   raise
+  except subprocess.TimeoutExpired:kill(p);return 'timeout'
+  finally:RUNNING.discard(p)
 def main(argv):
  flags={a for a in argv if a.startswith('--')};names=[a for a in argv if not a.startswith('-')]
  base=argv[argv.index('--base')+1] if '--base' in argv else None
  if base:names.remove(base)
- unknown=flags-{'--full','--shell','--no-live','--keep','--why','--list','--base','--help'}
+ unknown=flags-{'--full','--shell','--no-live','--keep','--why','--list','--base','--help','--serial'}
  if '--help' in flags or '-h' in argv or unknown:print(__doc__+(f'\nUnknown option(s): {", ".join(sorted(unknown))}' if unknown else ''));return 2 if unknown else 0
  if '--list' in flags:
   for g,ids in GROUPS.items():print(f'{g}: '+' '.join(ids))
@@ -164,22 +170,40 @@ def main(argv):
   t=time.monotonic();code=run(['cargo','build','--locked']+(['--release'] if b=='release' else []),logs/f'build-{b}.log',900)
   results.append((f'build-{b}','PASS' if code==0 else 'FAIL',time.monotonic()-t,'' if code==0 else f'exit {code}'))
   print(f'{results[-1][1]:7} {results[-1][0]:20} {results[-1][2]:6.1f}s',flush=True)
- built=all(r[1]=='PASS' for r in results);clip=None;shell_before=shell_instance() if '--shell' in flags else None
+ built=all(r[1]=='PASS' for r in results);clip=None;shell_before=shell_instance() if '--shell' in flags else None;lock=threading.Lock()
+ def check(c):
+  group,cmd,req,bins,timeout=CHECKS[c];log=logs/f'{c}.log';t=time.monotonic()
+  if c in skipped:r=(c,'SKIP',0,'--no-live')
+  elif STOP.is_set():r=(c,'SKIP',0,'interrupted')
+  elif need:=missing(req):r=(c,'BLOCKED',0,'missing '+', '.join(need))
+  elif bins and not built:r=(c,'BLOCKED',0,'build failed')
+  else:
+   code=(0 if shell_current(log) else 1) if cmd is None else run(cmd,log,timeout)
+   tail=[l for l in log.read_text(errors='replace').splitlines() if l.strip()][-1:] if log.exists() else []
+   r=(c,'PASS' if code==0 else 'FAIL',time.monotonic()-t,'' if code==0 else (f'{code}: ' if code=='timeout' else f'exit {code}: ')+(tail[0][:160] if tail else ''))
+  with lock:results.append(r);print(f'{r[1]:7} {c:20} {r[2]:6.1f}s  {r[3]}',flush=True)
+ def lane(ids):
+  for c in ids:check(c)
+ runnable=[c for c in selected if c not in skipped]
+ if any(c in ('ui-smoke','capture-flow') for c in runnable) and not missing(['wayland']):clip=Clipboard(logs);clip.save()
+ live=[c for c in selected if CHECKS[c][0] in ('live','shell') and c not in TIMED];timed=[c for c in selected if c in TIMED]
+ offscreen=[c for c in selected if c not in live and c not in timed]
  try:
-  for c in selected:
-   group,cmd,req,bins,timeout=CHECKS[c];log=logs/f'{c}.log';t=time.monotonic()
-   if c in skipped:results.append((c,'SKIP',0,'--no-live'))
-   elif need:=missing(req):results.append((c,'BLOCKED',0,'missing '+', '.join(need)))
-   elif bins and not built:results.append((c,'BLOCKED',0,'build failed'))
-   else:
-    if c in ('ui-smoke','capture-flow') and clip is None:clip=Clipboard(logs);clip.save()
-    code=(0 if shell_current(log) else 1) if cmd is None else run(cmd,log,timeout)
-    tail=[l for l in log.read_text(errors='replace').splitlines() if l.strip()][-1:] if log.exists() else []
-    results.append((c,'PASS' if code==0 else 'FAIL',time.monotonic()-t,'' if code==0 else (f'{code}: ' if code=='timeout' else f'exit {code}: ')+(tail[0][:160] if tail else '')))
-   print(f'{results[-1][1]:7} {c:20} {results[-1][2]:6.1f}s  {results[-1][3]}',flush=True)
- except KeyboardInterrupt:results.append(('interrupted','FAIL',0,'SIGINT/SIGTERM'));print('Interrupted')
+  if '--serial' in flags:lane(selected)
+  else:
+   # Offscreen checks in a pool next to the serial live lane; timing gates afterwards, with the machine otherwise idle.
+   lanes=[[c for c in offscreen if c in CARGO]]+[[c] for c in offscreen if c not in CARGO]+[live]
+   with cf.ThreadPoolExecutor(5) as ex:
+    futures=[ex.submit(lane,l) for l in sorted(lanes,key=lambda l:l!=live) if l]
+    try:
+     for f in futures:f.result()
+    except KeyboardInterrupt:
+     STOP.set();[kill(p) for p in list(RUNNING)];ex.shutdown(cancel_futures=True);raise
+   lane(timed)
+ except KeyboardInterrupt:STOP.set();[kill(p) for p in list(RUNNING)];results.append(('interrupted','FAIL',0,'SIGINT/SIGTERM'));print('Interrupted')
  finally:
   if clip:clip.restore()
+ order={c:i for i,c in enumerate([r[0] for r in results if r[0].startswith('build-')]+selected)};results.sort(key=lambda r:order.get(r[0],len(order)))
  if shell_before and shell_instance()!=shell_before:
   results.append(('shell-stable','FAIL',0,f'omarchy-shell restarted during the run ({shell_before} -> {shell_instance()}); another session? rerun'));print(f'FAIL    shell-stable          {results[-1][3]}')
  counts={s:sum(r[1]==s for r in results) for s in ['PASS','FAIL','BLOCKED','SKIP']}

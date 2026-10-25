@@ -22,3 +22,10 @@
   - It also found a verifier defect: `editor-latency` passed with empty results when the input never reached the window. The test now fails when any interaction goes unmeasured; this was confirmed failing once, then passing on an idle run and in the second full run.
 - **Not run:** `shell-latency` and the install/restart recipe, which need the user's approval to install. Screenshots were not regenerated (no UI change). CI was not changed.
 - **Status:** ready for the static, headless, identity and live routes on this machine. The real-shell route is partial: `shell-current` is proven, `shell-latency` has not been run through the runner here. It was used in earlier sessions without the runner.
+
+## 2026-10-25: speed-up
+
+- **Source:** 56e87b8 plus the parallel runner and the faster `live-scene-fidelity` (its exact renders now run in parallel while Quickshell grabs the live scenes, 40 s → 20 s). `render-identity` was already down to ~35 s in 56e87b8.
+- **Result:** `scripts/verify.py --full` passed 28/28 three times, in 190 s, 163 s and 162 s, down from ~330 s run serially. `editor-latency` (~89 s, run alone) is now over half the wall time. It mostly waits for the backend's exact render to settle between steps.
+- **Interrupt under parallel load:** a SIGTERM after 25 s killed the running checks, skipped the queued ones and reported NOT PASSED. No test processes were left behind.
+- **Selection:** a `src/` change now selects 24 checks without the timing gates; `plugin/Editor.qml` still selects `editor-latency`.
