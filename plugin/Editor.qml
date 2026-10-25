@@ -1427,6 +1427,7 @@ Rectangle {
                                     id: drawArea
                                     anchors.fill: parent
                                     enabled: !root.busy && !root.cropEditing && !root.textEditing && root.tool !== "select" && (root.liveReady || root.previewReady)
+                                    visible: enabled // disabled MouseAreas still claim the cursor
                                     cursorShape: Qt.CrossCursor
                                     property real startX: 0
                                     property real startY: 0
@@ -1514,8 +1515,9 @@ Rectangle {
                                     id: selectionArea
                                     anchors.fill: parent
                                     enabled: root.tool === "select" && !root.cropEditing && !root.textEditing && !root.busy
+                                    visible: enabled
                                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                    cursorShape: panning ? Qt.ClosedHandCursor : root.selectedOperation ? Qt.SizeAllCursor : Qt.OpenHandCursor
+                                    cursorShape: panning ? Qt.ClosedHandCursor : root.selectedOperation ? Qt.SizeAllCursor : Qt.ArrowCursor
                                     property bool panning: false
                                     property point panStart
                                     property real initialContentX: 0
