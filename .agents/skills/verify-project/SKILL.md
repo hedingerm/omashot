@@ -36,7 +36,7 @@ Live checks run in a private, hidden Hyprland nested in the session (window on `
 | Check | Oracle |
 |---|---|
 | `fmt`, `clippy`, `cargo-test`, `py-compile`, `manifest` | CI parity (`.github/workflows/ci.yml`): Rust unit tests incl. stitching/config validation, Cargo/manifest versions match |
-| `qmldir` | every plugin QML file except `ShellPalette.qml`, `shell.qml`, `WindowCapture.qml` is listed (otherwise `Theme` breaks inside omarchy-shell) |
+| `qmldir` | every plugin QML file except `BarWidget.qml`, `ShellPalette.qml`, `shell.qml`, `WindowCapture.qml` is listed (otherwise `Theme` breaks inside omarchy-shell) |
 | `plugin-validate` | `omarchy plugin validate ./plugin` |
 | `install` | isolated HOME: install/update/uninstall, ownership receipts, shell.json merge, launcher routing |
 | `render-regression`, `render-golden` | backend render dimensions/hashes; golden decoded-RGBA checksums (ImageMagick-dependent cases skip if the local magick/font key differs; the output says so) |

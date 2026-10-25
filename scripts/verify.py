@@ -22,7 +22,7 @@ CHECKS={
  'cargo-test':('static',['cargo','test','--locked'],['magick'],[],600),
  'py-compile':('static',['sh','-c','python3 -m py_compile scripts/*.py tests/*.py'],[],[],60),
  'manifest':('static',['sh','-c','jq -e \'.id == "omashot" and (.entryPoints.overlay | length > 0)\' plugin/manifest.json >/dev/null && c=$(cargo metadata --no-deps --format-version 1 | jq -r ".packages[0].version") && m=$(jq -r .version plugin/manifest.json) && echo "Cargo $c manifest $m" && test "$c" = "$m"'],['jq'],[],60),
- 'qmldir':('static',['sh','-c','cd plugin && for f in *.qml; do case $f in ShellPalette.qml|shell.qml|WindowCapture.qml) continue;; esac; grep -q " $f$" qmldir || { echo "$f missing from plugin/qmldir"; exit 1; }; done; echo all listed'],[],[],10),
+ 'qmldir':('static',['sh','-c','cd plugin && for f in *.qml; do case $f in BarWidget.qml|ShellPalette.qml|shell.qml|WindowCapture.qml) continue;; esac; grep -q " $f$" qmldir || { echo "$f missing from plugin/qmldir"; exit 1; }; done; echo all listed'],[],[],10),
  'plugin-validate':('static',['omarchy','plugin','validate','./plugin'],['omarchy'],[],60),
  'install':('headless',['bash','tests/install.sh'],[],[],120),
  'render-regression':('headless',py('render-regression'),['magick'],['debug'],300),
