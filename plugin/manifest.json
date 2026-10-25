@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"omashot","name":"OmaShot","description":"Screenshots, annotations, backgrounds and local capture history","version":"0.4.0","author":"Manuel Hedinger","kinds":["overlay","service"],"keepLoaded":true,"entryPoints":{"overlay":"Main.qml","service":"Retention.qml"}}

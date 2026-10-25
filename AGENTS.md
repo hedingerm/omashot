@@ -1,0 +1,72 @@
+# AGENTS.md
+
+OmaShot is a local screenshot tool for Omarchy (Hyprland). It has two halves:
+
+- **`src/` — Rust backend (`omashot` binary).** Capture, rendering, history/retention, OCR/QR, scrolling stitch, config. Stateless CLI: every command prints one JSON value to stdout; errors print `{"error": "..."}` and exit 1.
+- **`plugin/` — Quickshell/QML UI.** An Omarchy shell plugin (`manifest.json`, entry points `Main.qml` overlay + `Retention.qml` service; `shell.qml` for standalone `qs -p plugin`). QML calls the backend through `Process` and parses its JSON.
+
+User-facing behavior is documented in `README.md`; read it before changing features.
+
+## Layout
+
+| Path | Purpose |
+|---|---|
+| `src/main.rs` | CLI `dispatch`, capture geometry, render pipeline (annotation ops → ImageMagick), config validation, unit tests |
+| `src/storage.rs` | History listing, retention cleanup, wallpaper library, ownership checks |
+| `src/background.rs` | The 20 background presets, mesh renderer, thumbnails |
+| `src/snapshot.rs` | Frozen-desktop snapshots, isolated window capture (spawns `plugin/WindowCapture.qml`) |
+| `plugin/Main.qml` | Launcher window, `IpcHandler` (`target: "omashot"`), quick access, pins, preferences |
+| `plugin/Editor.qml`, `AnnotationGeometry.js` | Annotation editor and its hit-test/geometry helpers |
+| `plugin/BackgroundPanel.qml` | Background sidebar, presets, wallpaper import |
+| `plugin/CaptureSelector.qml`, `ScrollCapture.qml`, `QuickAccess.qml` | Area selection, scrolling capture, post-capture thumbnails |
+| `plugin/Icon.qml`, `IconButton.qml` | Shared SVG icon set and accessible icon button — reuse these for any new control |
+| `scripts/install.sh`, `install-state.py`, `uninstall.sh` | Installer with hash receipt, `shell.json` merge |
+| `scripts/omashot-ui` | Launcher: Omarchy shell IPC first, standalone `qs` fallback |
+| `tests/` | Python/bash integration and Wayland smoke tests |
+| `docs/screenshots/` | README images (synthetic content only) |
+| `.github/workflows/ci.yml` | CI: fmt, clippy, tests, installer test, plugin manifest checks |
+
+## Commands
+
+```bash
+cargo build                                  # debug binary; most tests use target/debug/omashot
+cargo test --locked
+cargo clippy --all-targets -- -D warnings    # must be clean
+cargo fmt
+omarchy plugin validate ./plugin
+```
+
+Tests by environment (run `cargo build` first; they use the debug binary):
+
+- **Headless:** `bash tests/install.sh`, `python3 tests/render-regression.py`, `python3 tests/history-service.py`, and the offscreen Qt editor tests `tests/editor-{events,objects,narrow,background}-smoke.py`.
+- **Need a live Wayland/Hyprland session:** `tests/ui-smoke.py` (also needs `wl-paste`, `qrencode`; **overwrites the clipboard**), `capture-selector-smoke.py`, `capture-flow-smoke.py`, `isolated-window-smoke.py`, `scroll-smoke.py`. They briefly open real windows/pins.
+
+Run the narrowest relevant tests for a change; run the full list from `README.md` ("Verify and develop") before claiming a feature done. `./scripts/doctor.sh` checks runtime dependencies.
+
+Standalone UI development:
+
+```bash
+OMASHOT_BACKEND="$PWD/target/debug/omashot" qs -p plugin
+qs ipc -p plugin call omashot open
+```
+
+Quickshell has crashed during QML live-reload here: stop standalone instances before editing QML and verify with a fresh launch.
+
+## Rules
+
+- **Never touch the user's real data in tests.** Always isolate with temporary `XDG_DATA_HOME` / `XDG_CONFIG_HOME` (and `OMASHOT_BACKEND`, `OMASHOT_PLUGIN_PATH` as needed), as existing tests do.
+- **Don't run `scripts/install.sh` or `uninstall.sh` unless asked** — they modify `~/.local/bin`, `~/.config/omarchy/plugins` and `shell.json`, and may restart the Omarchy shell.
+- **Backend contract:** keep stdout a single JSON value per invocation. When adding a command, add it to the `help` list in `dispatch` and a matching handler in QML. Config keys are validated in `main.rs`; `omashot config '<json>'` replaces the whole config, so callers must merge existing keys.
+- **Security invariants (tested):** destructive/file commands only act on paths owned by the data directory (`checked`, `owned`, `numeric_id`); colors and other values passed to ImageMagick are validated; desktop hide/restore hooks run as argv arrays, never through a shell. Preserve these when extending.
+- **History/projects:** edits keep original pixels plus an editable operation list (project sidecar); exports are flattened. Older projects must keep rendering as before (backgrounds are versioned) — don't change existing preset output in place.
+- **Versioning:** `Cargo.toml` and `plugin/manifest.json` versions must match.
+- **New QML files** require an Omarchy shell restart (type cache); the installer handles this, but standalone testing needs a fresh `qs` process.
+- **Naming:** display name `OmaShot`; identifiers, paths, commands, IPC and env vars use `omashot` / `OMASHOT_`.
+- **Style:** match the existing dense, compact code (Rust 2024, few deps: `serde`, `serde_json`, `image`). Shell out to system tools (grim, slurp, magick, tesseract, zbarimg, hyprctl) rather than adding crates. Python test scripts use only the standard library.
+
+## Scope
+
+- Screen recording and cloud upload are **out of scope**.
+- "Known limitations" in `README.md` lists open gaps. Don't remove an item without a test or inspected render proving it is fixed; update README when behavior or scope changes.
+- Don't mention, link to or copy assets from other commercial screenshot products. All assets in `plugin/assets/brand/` are original (regenerate PNGs with `scripts/brand-assets.py`).
+- `docs/` may contain local, git-ignored working notes (see `.gitignore`); never commit them or reference them from tracked files.

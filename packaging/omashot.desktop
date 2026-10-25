@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Name=OmaShot
+GenericName=Screenshot Tool
+Comment=Capture, annotate and style screenshots
+Exec=omashot-ui
+Icon=omashot
+Terminal=false
+Categories=Graphics;Utility;
+Keywords=screenshot;capture;annotation;OCR;
+StartupNotify=false
+Actions=Region;History;
+
+[Desktop Action Region]
+Name=Capture Area
+Exec=omashot-ui region
+
+[Desktop Action History]
+Name=Screenshot History
+Exec=omashot-ui history

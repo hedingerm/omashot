@@ -1,0 +1,23 @@
+# Rust build output
+/target/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Local working notes and third-party review media (never published)
+/docs/*
+!/docs/screenshots/
+
+# Installer backups and editor/OS noise
+*.omashot-backup-*
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Local agent/tool state
+/logs/
+.claude/
+CLAUDE.local.md

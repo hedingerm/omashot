@@ -1,0 +1,14 @@
+[package]
+name = "omashot"
+version = "0.4.0"
+edition = "2024"
+license = "MIT"
+description = "Screenshot capture, annotation and history backend for the OmaShot Omarchy plugin"
+repository = "https://github.com/hedingerm/omashot"
+authors = ["Manuel Hedinger"]
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }

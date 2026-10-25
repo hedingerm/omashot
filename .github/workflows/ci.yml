@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --locked
+      - name: Installer test
+        run: bash tests/install.sh
+      - name: Manifest and version consistency
+        run: |
+          jq -e '.id == "omashot" and (.entryPoints.overlay | length > 0)' plugin/manifest.json
+          cargo_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          manifest_version=$(jq -r .version plugin/manifest.json)
+          test "$cargo_version" = "$manifest_version" || { echo "Cargo.toml ($cargo_version) and manifest.json ($manifest_version) versions differ"; exit 1; }
+      - name: Python syntax
+        run: python3 -m py_compile scripts/*.py tests/*.py
