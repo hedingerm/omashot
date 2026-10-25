@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - The UI follows the active Omarchy theme live, including light themes. Inside the Omarchy shell it fades in step with the bar from the shell's own palette and holds the display frame rate. `OMASHOT_THEME_PATH` previews another theme directory.
-- `themeStats` IPC call reports the frame pacing of the last theme fade.
+- `themeStats` IPC call reports the frame pacing of the last theme fade; `measureFrames <ms>` samples a baseline without a fade.
 
 ### Changed
 

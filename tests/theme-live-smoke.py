@@ -59,7 +59,7 @@ import Quickshell
   else if(!mono)shell.fail("fade is monotonic")
   else if(g.length<12||worst>50)shell.fail("frame pacing frames="+g.length+" worst="+worst)
   else if(stats.source!==("'''+('omarchy-shell' if shell_mode else 'theme.name')+'''")||stats.frames<12||stats.worstMs>50)shell.fail("themeStats "+JSON.stringify(stats))
-  else if(shell.applied&&shell.start-shell.applied>50)shell.fail("starts with the shell palette, lag "+(shell.start-shell.applied))
+  else if(shell.applied&&shell.start-shell.applied>25)shell.fail("starts with the shell palette, lag "+(shell.start-shell.applied))
   else{console.log("LIVE_PASSED");Qt.quit()}
  }}
  Timer {interval:30000;running:true;onTriggered:shell.fail("timeout")}

@@ -218,6 +218,7 @@ omarchy-shell shell summon omashot '{}'
 omarchy-shell omashot capture region
 omarchy-shell omashot history
 omarchy-shell omashot themeStats   # frame pacing of the last theme fade
+omarchy-shell omashot measureFrames 2000   # baseline: sample frame pacing for 2 s, read with themeStats
 ```
 
 ## Configuration

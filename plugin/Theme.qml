@@ -145,10 +145,17 @@ QtObject {
     property var fadeGaps: []
     property real fadeStart: 0
     property real fadeLast: 0
+    property string fadeSource: ""
     function trackFade() {
+        measure(duration + 60, shell ? "omarchy-shell" : "theme.name");
+    }
+    // Also callable on its own (`measureFrames`) to sample frame pacing without a fade, as a baseline.
+    function measure(ms, source) {
         fadeGaps = [];
         fadeLast = 0;
         fadeStart = Date.now();
+        fadeSource = source;
+        fadeTimer.interval = ms;
         fadeTimer.restart();
     }
     property FrameAnimation fadeFrames: FrameAnimation {
@@ -161,7 +168,6 @@ QtObject {
         }
     }
     property Timer fadeTimer: Timer {
-        interval: root.duration + 60
         onTriggered: {
             var g = root.fadeGaps.slice().sort(function (a, b) {
                 return a - b;
@@ -170,7 +176,7 @@ QtObject {
                 frames: g.length,
                 medianMs: g.length ? g[g.length >> 1] : 0,
                 worstMs: g.length ? g[g.length - 1] : 0,
-                source: root.shell ? "omarchy-shell" : "theme.name"
+                source: root.fadeSource
             };
         }
     }

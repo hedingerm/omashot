@@ -468,6 +468,9 @@ Item {
         function themeStats(): string {
             return JSON.stringify(Theme.fade);
         }
+        function measureFrames(ms: int): void {
+            Theme.measure(Math.max(100, Math.min(10000, ms)), "probe");
+        }
         function annotate(): void {
             root.beginEditing();
         }
