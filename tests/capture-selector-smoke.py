@@ -30,17 +30,14 @@ ShellRoot {
  }
  Timer {interval:800;running:true;onTriggered:{try{
   let x=picker.originX,y=picker.originY
-  picker.begin(x+40,y+40);picker.update(x+140,y+120);picker.end()
-  test.require(picker.hasSelection&&picker.selectionWidth===100&&picker.selectionHeight===80,"Initial region geometry")
-  picker.resizeBegin("se",x+140,y+120);picker.update(x+150,y+140);picker.end()
-  test.require(picker.selectionWidth===110&&picker.selectionHeight===100,"Southeast resize")
-  picker.begin(x+70,y+70);picker.update(x+85,y+95);picker.end()
-  test.require(picker.selectionX===x+55&&picker.selectionY===y+65,"Region movement")
-  let e={key:Qt.Key_Right,modifiers:Qt.ShiftModifier,accepted:false};picker.key(e)
-  test.require(e.accepted&&picker.selectionX===x+65,"Keyboard precision movement")
   picker.showCrosshair=false;picker.showMagnifier=false
   test.require(!picker.showCrosshair&&!picker.showMagnifier,"Capture aid preferences")
-  picker.finish();picker.finish();test.require(test.emitted===1,"Single completion signal")
+  picker.begin(x+50,y+50);picker.end()
+  test.require(test.emitted===0&&!picker.hasSelection,"Click without drag does not capture")
+  picker.begin(x+65,y+65);picker.update(x+140,y+120);picker.update(x+175,y+165)
+  test.require(test.emitted===0&&picker.selectionWidth===110&&picker.selectionHeight===100,"Drag geometry before release")
+  picker.end();test.require(test.emitted===1,"Release captures immediately")
+  picker.finish();picker.end();test.require(test.emitted===1,"Single completion signal")
   console.log("SELECTED="+test.selectedGeometry);Qt.quit()
  }catch(e){console.error("TEST_ERROR="+e);Qt.quit()}}}
  Timer {interval:10000;running:true;onTriggered:{console.error("TEST_ERROR=Selector timeout");Qt.quit()}}
@@ -68,4 +65,4 @@ ShellRoot {
     assert result.returncode==0 and 'CANCELLED' in result.stdout and not any(w in result.stdout for w in ['TEST_ERROR=','ReferenceError','TypeError','ERROR:']),result.stdout
     command('snapshot-cancel',cancelled['path']);assert not Path(cancelled['path']).exists()
     assert len(command('history'))==1, 'Cancellation must not add a history capture'
-print('PASS: live frozen selector, drag/move/resize, coordinate mapping, keyboard aids, physical crop and cancellation')
+print('PASS: live frozen selector, capture on release, coordinate mapping, physical crop and cancellation')

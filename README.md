@@ -174,7 +174,7 @@ Pick chords that aren't taken yet (replacing one requires `hl.unbind(...)`), the
 <details>
 <summary><b>Capturing</b></summary>
 
-- In area selection, drag to select, adjust the handles, then press <kbd>Enter</kbd>. <kbd>Esc</kbd> cancels.
+- In area selection, drag to select; the capture is taken as soon as you release. <kbd>Esc</kbd> or right-click cancels.
 - Turn off desktop freezing in Preferences to use `slurp` instead.
 - Enable isolated window capture to export the window's own buffer with transparency (PNG/WebP).
 - New captures appear as quick-access thumbnails. Hover for copy/save and more, or drag one into another app.
