@@ -42,8 +42,8 @@ PY_CACHE
 export TEST_UPDATE_LOG="$test_home/update.log"
 PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_home/backend"
 PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_home/backend"
-[[ $(rg -c '^omarchy restart shell$' "$TEST_UPDATE_LOG") == 1 ]]
-[[ $(rg -c '^shell shell rescanPlugins$' "$TEST_UPDATE_LOG") == 2 ]]
+[[ $(grep -Ec '^omarchy restart shell$' "$TEST_UPDATE_LOG") == 1 ]]
+[[ $(grep -Ec '^shell shell rescanPlugins$' "$TEST_UPDATE_LOG") == 2 ]]
 
 # Capture data and unrelated files must survive uninstall. Modified installed code survives too.
 mkdir -p "$XDG_DATA_HOME/omashot"
@@ -94,13 +94,13 @@ MOCK
 chmod +x "$test_home/mock-bin/omarchy-shell" "$test_home/mock-bin/qs"
 export PATH="$test_home/mock-bin:$PATH" TEST_LOG="$test_home/launcher.log" TEST_HOST=ok TEST_READY_COUNT="$test_home/ready-count"
 "$repo/scripts/omashot-ui" fullscreen
-rg -q '^host omashot capture fullscreen$' "$TEST_LOG"
-[[ $(rg -c '^host omashot status$' "$TEST_LOG") == 2 ]]
+grep -Eq '^host omashot capture fullscreen$' "$TEST_LOG"
+[[ $(grep -Ec '^host omashot status$' "$TEST_LOG") == 2 ]]
 "$repo/scripts/omashot-ui" history
-rg -q '^host omashot history$' "$TEST_LOG"
+grep -Eq '^host omashot history$' "$TEST_LOG"
 export TEST_HOST=unknown
 "$repo/scripts/omashot-ui" region
-rg -q 'standalone ipc -p .*/plugin call omashot capture region$' "$TEST_LOG"
+grep -Eq 'standalone ipc -p .*/plugin call omashot capture region$' "$TEST_LOG"
 "$repo/scripts/omashot-ui" history
-rg -q 'standalone ipc -p .*/plugin call omashot history$' "$TEST_LOG"
+grep -Eq 'standalone ipc -p .*/plugin call omashot history$' "$TEST_LOG"
 echo 'PASS: isolated installation, updates, ownership, config preservation, uninstall and launcher routing' 
