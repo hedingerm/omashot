@@ -186,28 +186,28 @@ Item {
             y: 0
             width: parent.width
             height: Math.max(0, root.localY)
-            color: "#65000000"
+            color: Theme.alpha(Theme.background, 0.4)
         }
         Rectangle {
             x: 0
             y: root.localY + root.region.h
             width: parent.width
             height: Math.max(0, parent.height - y)
-            color: "#65000000"
+            color: Theme.alpha(Theme.background, 0.4)
         }
         Rectangle {
             x: 0
             y: root.localY
             width: Math.max(0, root.localX)
             height: root.region.h
-            color: "#65000000"
+            color: Theme.alpha(Theme.background, 0.4)
         }
         Rectangle {
             x: root.localX + root.region.w
             y: root.localY
             width: Math.max(0, parent.width - x)
             height: root.region.h
-            color: "#65000000"
+            color: Theme.alpha(Theme.background, 0.4)
         }
         Rectangle {
             x: root.localX - 2
@@ -215,7 +215,7 @@ Item {
             width: root.region.w + 4
             height: root.region.h + 4
             color: "transparent"
-            border.color: "#f0edf8"
+            border.color: Theme.accent
             border.width: 1
         }
     }
@@ -240,8 +240,9 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: 20
-            color: "#f52a2c36"
-            border.color: "#676373"
+            color: Theme.alpha(Theme.panel, 0.96)
+            border.color: Theme.border
+            palette: Theme.controls.palette
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 5
@@ -294,8 +295,8 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: 6
-            color: "#e52a2b35"
-            border.color: "#89839e"
+            color: Theme.alpha(Theme.panel, 0.9)
+            border.color: Theme.borderStrong
             Image {
                 id: previewImage
                 anchors.fill: parent
@@ -311,7 +312,7 @@ Item {
                 anchors.bottomMargin: 5
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.capturedWidth + " × " + root.capturedHeight
-                color: "#dbd8e8"
+                color: Theme.textSoft
                 font.pixelSize: 9
             }
         }
@@ -335,7 +336,7 @@ Item {
         Text {
             anchors.fill: parent
             text: root.message
-            color: "#fff0da"
+            color: Theme.warning
             font.pixelSize: 11
             elide: Text.ElideRight
         }

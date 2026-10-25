@@ -40,12 +40,12 @@ Item {
         iconSize: 12
         background: Rectangle {
             radius: width / 2
-            color: parent.hovered ? "#ffffff" : "#dedee7"
+            color: parent.hovered ? Theme.raised : Theme.alpha(Theme.window, 0.92)
         }
         contentItem: Icon {
             name: parent.iconName
             size: 12
-            color: "#353540"
+            color: Theme.text
         }
     }
     PanelWindow {
@@ -90,9 +90,9 @@ Item {
                         width: stack.width
                         height: Math.max(68, Math.min(width * 0.85, width * Math.max(1, modelData.height || 90) / Math.max(1, modelData.width || 160)))
                         radius: 9
-                        color: "#272933"
+                        color: Theme.surface
                         border.width: 1
-                        border.color: hover.hovered ? "#beb8e4" : "#4b4e5b"
+                        border.color: hover.hovered ? Theme.accent : Theme.border
                         clip: true
                         Accessible.name: "Screenshot preview"
                         HoverHandler {
@@ -127,7 +127,7 @@ Item {
                         }
                         Rectangle {
                             anchors.fill: parent
-                            color: "#b51a1a22"
+                            color: Theme.alpha(Theme.window, 0.6)
                             visible: card.showActions
                         }
                         MouseArea {
@@ -167,12 +167,12 @@ Item {
                                 padding: 3
                                 background: Rectangle {
                                     radius: 11
-                                    color: parent.hovered ? "#ffffff" : "#eeeeF4"
+                                    color: parent.hovered ? Theme.accentHover : Theme.accent
                                 }
                                 contentItem: Text {
                                     text: parent.text
                                     font.pixelSize: 11
-                                    color: "#252530"
+                                    color: Theme.accentText
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
@@ -185,12 +185,12 @@ Item {
                                 padding: 3
                                 background: Rectangle {
                                     radius: 11
-                                    color: parent.hovered ? "#ffffff" : "#eeeeF4"
+                                    color: parent.hovered ? Theme.accentHover : Theme.accent
                                 }
                                 contentItem: Text {
                                     text: parent.text
                                     font.pixelSize: 11
-                                    color: "#252530"
+                                    color: Theme.accentText
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
@@ -272,8 +272,8 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: 9
-            color: "#e52d303a"
-            border.color: "#767589"
+            color: Theme.alpha(Theme.panel, 0.9)
+            border.color: Theme.borderStrong
             Row {
                 anchors.centerIn: parent
                 spacing: 6
@@ -281,11 +281,11 @@ Item {
                     name: "chevron"
                     size: 14
                     rotation: 180
-                    color: "#dedce9"
+                    color: Theme.text
                 }
                 Text {
                     text: String(root.captures.length)
-                    color: "#dedce9"
+                    color: Theme.text
                     font.pixelSize: 11
                 }
             }

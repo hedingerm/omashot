@@ -20,6 +20,7 @@ User-facing behavior is documented in `README.md`; read it before changing featu
 | `plugin/BackgroundPanel.qml` | Background sidebar, presets, wallpaper import |
 | `plugin/CaptureSelector.qml`, `ScrollCapture.qml`, `QuickAccess.qml` | Area selection, scrolling capture, post-capture thumbnails |
 | `plugin/Icon.qml`, `IconButton.qml` | Shared SVG icon set and accessible icon button — reuse these for any new control |
+| `plugin/Theme.qml`, `qmldir` | Live Omarchy palette singleton (watches `~/.local/state/omarchy/current`); every UI color comes from its roles |
 | `scripts/install.sh`, `install-state.py`, `uninstall.sh` | Installer with hash receipt, `shell.json` merge |
 | `scripts/omashot-ui` | Launcher: Omarchy shell IPC first, standalone `qs` fallback |
 | `tests/` | Python/bash integration and Wayland smoke tests |
@@ -39,7 +40,7 @@ omarchy plugin validate ./plugin
 
 Tests by environment (run `cargo build` first; they use the debug binary):
 
-- **Headless:** `bash tests/install.sh`, `python3 tests/render-regression.py`, `python3 tests/history-service.py`, and the offscreen Qt editor tests `tests/editor-{events,objects,narrow,background}-smoke.py`.
+- **Headless:** `bash tests/install.sh`, `python3 tests/render-regression.py`, `python3 tests/history-service.py`, and the offscreen Qt tests `tests/editor-{events,objects,narrow,background}-smoke.py` and `tests/theme-smoke.py`.
 - **Need a live Wayland/Hyprland session:** `tests/ui-smoke.py` (also needs `wl-paste`, `qrencode`; **overwrites the clipboard**), `capture-selector-smoke.py`, `capture-flow-smoke.py`, `isolated-window-smoke.py`, `scroll-smoke.py`. They briefly open real windows/pins.
 
 Run the narrowest relevant tests for a change; run the full list from `README.md` ("Verify and develop") before claiming a feature done. `./scripts/doctor.sh` checks runtime dependencies.
@@ -63,6 +64,7 @@ Quickshell has crashed during QML live-reload here: stop standalone instances be
 - **Screenshots:** after any visible UI or rendering change, follow the `update-screenshots` skill (`.agents/skills/update-screenshots/SKILL.md`): run `scripts/screenshots.sh` (needs a Wayland session, Chromium, ImageMagick, Quickshell) and commit the updated `docs/screenshots/*.png`. Change the demo content in `docs/screenshots/source/`, never hand-edit the PNGs. Review the images before committing.
 - **Versioning:** `Cargo.toml` and `plugin/manifest.json` versions must match.
 - **New QML files** require an Omarchy shell restart (type cache); the installer handles this, but standalone testing needs a fresh `qs` process.
+- **Theming:** never hardcode UI chrome colors; use `Theme` roles and set `palette: Theme.controls.palette` on new windows and every Popup/Menu/Dialog. Annotation, background-preset and image-overlay colors are content and stay fixed. New QML files must also be listed in `plugin/qmldir`.
 - **Naming:** display name `OmaShot`; identifiers, paths, commands, IPC and env vars use `omashot` / `OMASHOT_`.
 - **Style:** match the existing dense, compact code (Rust 2024, few deps: `serde`, `serde_json`, `image`). Shell out to system tools (grim, slurp, magick, tesseract, zbarimg, hyprctl) rather than adding crates. Python test scripts use only the standard library.
 

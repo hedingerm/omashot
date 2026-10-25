@@ -15,6 +15,14 @@ backend="${CARGO_TARGET_DIR:-$repo/target}/debug/omashot"
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 export XDG_DATA_HOME="$work/data" XDG_CONFIG_HOME="$work/config"
+# The UI follows the active Omarchy theme; pin a stock one so the images don't depend on this machine.
+theme=${OMASHOT_SCREENSHOT_THEME:-tokyo-night}
+theme_colors="${OMARCHY_PATH:-/usr/share/omarchy}/themes/$theme/colors.toml"
+[[ -f $theme_colors ]] || { echo "Missing Omarchy theme: $theme_colors" >&2; exit 1; }
+mkdir -p "$work/theme-state/theme"
+cp "$theme_colors" "$work/theme-state/theme/"
+echo "$theme" >"$work/theme-state/theme.name"
+export OMASHOT_THEME_PATH="$work/theme-state"
 
 shot() { # harness output qt-platform
   local log="$work/$(basename "$1" .qml).log"

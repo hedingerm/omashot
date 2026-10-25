@@ -44,6 +44,16 @@ PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_ho
 PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_home/backend"
 [[ $(grep -Ec '^omarchy restart shell$' "$TEST_UPDATE_LOG") == 1 ]]
 [[ $(grep -Ec '^shell shell rescanPlugins$' "$TEST_UPDATE_LOG") == 2 ]]
+# A new qmldir registers types/singletons (Theme), so it restarts the host too.
+python3 - <<'PY_QMLDIR'
+import json,pathlib
+h=pathlib.Path.home();receipt=h/'.local/share/omashot/install.json'
+v=json.loads(receipt.read_text());file=h/'.config/omarchy/plugins/omashot/qmldir'
+del v['files'][str(file)];file.unlink();receipt.write_text(json.dumps(v))
+PY_QMLDIR
+PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_home/backend"
+[[ $(grep -Ec '^omarchy restart shell$' "$TEST_UPDATE_LOG") == 2 ]]
+[[ -f "$HOME/.config/omarchy/plugins/omashot/qmldir" && -f "$HOME/.config/omarchy/plugins/omashot/Theme.qml" ]]
 
 # Capture data and unrelated files must survive uninstall. Modified installed code survives too.
 mkdir -p "$XDG_DATA_HOME/omashot"

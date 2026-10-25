@@ -75,6 +75,7 @@ OmaShot is a native screenshot tool for Omarchy, built as an Omarchy shell plugi
 ### ⚡ Workflow
 - Quick-access thumbnails: copy, save, edit, pin or drag away
 - **Pins** float above your windows with opacity and click-through
+- Follows the **active Omarchy theme** live, fading with the shell on every switch
 - Local **OCR** (Tesseract) and **QR** decoding straight to the clipboard
 - **History** that expires after a configurable number of days
 
@@ -230,6 +231,8 @@ Most settings live in the Preferences panel. Under the hood:
 `omashot config` prints the current configuration; `omashot config '<json>'` replaces it, so keep existing keys when scripting.
 
 **History retention:** captures are deleted after 30 days by default (`0` keeps them forever). Cleanup runs at shell startup, hourly, and on demand with `omashot cleanup`. Exported files and imported wallpapers are never deleted.
+
+**Theme:** OmaShot uses the active Omarchy theme and needs no setup. It reads `~/.local/state/omarchy/current/theme/colors.toml` and watches `theme.name`, which `omarchy theme set` rewrites after each switch. Every window, menu, dialog, pin, quick-access card and capture overlay then fades to the new palette over the same 420 ms as the Omarchy shell, light themes included. Annotation colors, background presets and your captures never change with the theme. Set `OMASHOT_THEME_PATH` to another `current`-style directory to preview a theme without switching your desktop.
 
 **Desktop icons:** if you use a desktop-icon provider, set `hide_desktop_icons: true` with `desktop_hide_argv` and `desktop_restore_argv` command arrays to hide icons while capturing. Commands run directly, without a shell.
 

@@ -44,8 +44,12 @@ omarchy plugin validate ./plugin
 
 Then run the tests relevant to your change (after `cargo build`):
 
-- Headless: `tests/render-regression.py`, `tests/history-service.py`, `tests/editor-*-smoke.py` (offscreen Qt, needs Quickshell).
-- Live Wayland session: `tests/ui-smoke.py`, `tests/capture-*-smoke.py`, `tests/isolated-window-smoke.py`, `tests/scroll-smoke.py`. These open real windows, and `ui-smoke.py` overwrites your clipboard.
+- Headless: `tests/render-regression.py`, `tests/history-service.py`, `tests/editor-*-smoke.py`, `tests/theme-smoke.py` (offscreen Qt, needs Quickshell).
+- Live Wayland session: `tests/ui-smoke.py`, `tests/capture-*-smoke.py`, `tests/isolated-window-smoke.py`, `tests/scroll-smoke.py`, `tests/theme-live-smoke.py` (loads the plugin the way omarchy-shell does and checks the theme fade holds frame pacing). These open real windows, and `ui-smoke.py` overwrites your clipboard.
+
+## Theme colors
+
+All UI colors come from `plugin/Theme.qml`, which follows the active Omarchy theme live. Don't hardcode chrome colors: use its roles (`window`, `panel`, `surface`, `raised`, `border`, `text`, `textMuted`, `accent`, `accentText`, …). Give each new window root and every `Popup`/`Menu`/`Dialog` `palette: Theme.controls.palette`, because popups don't inherit palettes. List new QML files in `plugin/qmldir`, or the `Theme` singleton won't resolve inside omarchy-shell.
 
 ## Screenshots
 
@@ -55,7 +59,7 @@ The README images are generated, not hand-made. After a visible UI or rendering 
 ./scripts/screenshots.sh
 ```
 
-It renders a synthetic demo dashboard (`docs/screenshots/source/dashboard.html`), applies `annotations.json` with the real backend, grabs the editor offscreen and briefly opens the launcher on Wayland, then rewrites `docs/screenshots/*.png`. It uses temporary data directories and only captures OmaShot's own windows, never your desktop. Check the result and commit the changed images with your pull request.
+It renders a synthetic demo dashboard (`docs/screenshots/source/dashboard.html`), applies `annotations.json` with the real backend, grabs the editor offscreen and briefly opens the launcher on Wayland, then rewrites `docs/screenshots/*.png`. It uses temporary data directories and only captures OmaShot's own windows, never your desktop. The UI is rendered in Omarchy's default Tokyo Night theme, whatever theme you use; set `OMASHOT_SCREENSHOT_THEME=<stock theme>` to try another one. Check the result and commit the changed images with your pull request.
 
 Tests use temporary `XDG_DATA_HOME`/`XDG_CONFIG_HOME` directories. Keep it that way for new tests; never touch real user data.
 

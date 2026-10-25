@@ -8,7 +8,8 @@ import "AnnotationGeometry.js" as Geometry
 
 Rectangle {
     id: root
-    color: "#191d29"
+    color: Theme.window
+    palette: Theme.controls.palette
     radius: 10
     clip: true
     property string sourcePath: ""
@@ -654,6 +655,7 @@ Rectangle {
     }
     Dialog {
         id: resizeDialog
+        palette: Theme.controls.palette
         title: "Resize image"
         anchors.centerIn: parent
         modal: true
@@ -684,7 +686,7 @@ Rectangle {
             }
             Text {
                 text: "×"
-                color: "#b8bed0"
+                color: Theme.textSoft
             }
             TextField {
                 id: resizeHeight
@@ -700,18 +702,18 @@ Rectangle {
     component Divider: Rectangle {
         width: 1
         height: 22
-        color: "#3d4150"
+        color: Theme.border
         anchors.verticalCenter: parent.verticalCenter
     }
     component Entry: TextField {
-        color: "#e4e7f1"
+        color: Theme.text
         selectByMouse: true
         font.pixelSize: 12
         implicitHeight: 30
         background: Rectangle {
             radius: 5
-            color: "#202532"
-            border.color: "#3a4050"
+            color: Theme.surface
+            border.color: Theme.border
         }
     }
 
@@ -721,7 +723,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 52
-            color: "#252936"
+            color: Theme.panel
             Flickable {
                 id: cropToolbarViewport
                 visible: root.cropEditing
@@ -741,7 +743,7 @@ Rectangle {
                     Icon {
                         name: "crop"
                         size: 22
-                        color: "#b6a4ff"
+                        color: Theme.accent
                     }
                     ComboBox {
                         model: ["Freeform", "1:1", "4:3", "16:9", "9:16"]
@@ -761,7 +763,7 @@ Rectangle {
                     }
                     Text {
                         text: "×"
-                        color: "#aab5cc"
+                        color: Theme.textSoft
                     }
                     SpinBox {
                         from: 1
@@ -786,6 +788,7 @@ Rectangle {
                         onClicked: cropFlipMenu.open()
                         Menu {
                             id: cropFlipMenu
+                            palette: Theme.controls.palette
                             y: cropFlipButton.height
                             MenuItem {
                                 text: "Flip horizontally"
@@ -928,7 +931,7 @@ Rectangle {
                     Rectangle {
                         width: 1
                         Layout.preferredHeight: 24
-                        color: "#414555"
+                        color: Theme.border
                         Layout.leftMargin: 3
                         Layout.rightMargin: 3
                     }
@@ -973,21 +976,17 @@ Rectangle {
                                 height: 16
                                 radius: 8
                                 color: root.ink
-                                border.color: "#e0e4f3"
+                                border.color: Theme.text
                                 anchors.centerIn: parent
                             }
                         }
                         background: Rectangle {
                             radius: 6
-                            color: colorButton.hovered ? "#3d4254" : "#303542"
+                            color: colorButton.hovered ? Theme.raised : Theme.surface
                         }
                         onClicked: inkPopup.open()
                     }
                     SpinBox {
-                        palette.base: "#303542"
-                        palette.text: "#d2d7e4"
-                        palette.button: "#353a49"
-                        palette.buttonText: "#b8c1d6"
                         from: root.textOptions ? 10 : 1
                         to: root.textOptions ? 144 : 30
                         value: root.textOptions ? root.textSize : root.strokeWidth
@@ -1011,7 +1010,7 @@ Rectangle {
                     Rectangle {
                         width: 1
                         Layout.preferredHeight: 24
-                        color: "#414555"
+                        color: Theme.border
                         Layout.leftMargin: 3
                         Layout.rightMargin: 3
                     }
@@ -1032,7 +1031,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: "#3b3e4c"
+            color: Theme.border
         }
         RowLayout {
             Layout.fillWidth: true
@@ -1064,7 +1063,7 @@ Rectangle {
                 visible: root.sidebarVisible
                 width: 1
                 Layout.fillHeight: true
-                color: "#3b3e4c"
+                color: Theme.border
             }
             ColumnLayout {
                 Layout.fillWidth: true
@@ -1074,7 +1073,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 0
                     visible: false
-                    color: "#202430"
+                    color: Theme.panel
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: 6
@@ -1082,7 +1081,7 @@ Rectangle {
                         Icon {
                             name: "text"
                             size: 18
-                            color: "#9da6c3"
+                            color: Theme.textMuted
                         }
                         Entry {
                             id: annotationText
@@ -1097,7 +1096,7 @@ Rectangle {
                     Layout.fillHeight: true
                     Layout.minimumWidth: 0
                     Layout.minimumHeight: 100
-                    color: "#191b20"
+                    color: Theme.sunken
                     clip: true
                     DropArea {
                         anchors.fill: parent
@@ -1366,7 +1365,7 @@ Rectangle {
                                     height: box.h * imageArea.sy
                                     visible: !!root.selectedOperation && !root.textEditing && !root.cropEditing
                                     color: "transparent"
-                                    border.color: "#339dff"
+                                    border.color: Theme.accent
                                     border.width: 1
                                 }
                                 Repeater {
@@ -1385,8 +1384,8 @@ Rectangle {
                                         height: 10
                                         radius: modelData.key === "curve" ? 2 : 5
                                         z: 20
-                                        color: "#259dff"
-                                        border.color: "white"
+                                        color: Theme.accent
+                                        border.color: Theme.lightest
                                         border.width: 1
                                         MouseArea {
                                             anchors.fill: parent
@@ -1416,7 +1415,7 @@ Rectangle {
                                     width: Math.max(110, inlineText.contentWidth + 18)
                                     height: Math.max(38, inlineText.contentHeight + 12)
                                     color: "#efffffff"
-                                    border.color: "#2699ff"
+                                    border.color: Theme.accent
                                     border.width: 1
                                     TextEdit {
                                         id: inlineText
@@ -1541,7 +1540,7 @@ Rectangle {
                                             height: 10
                                             radius: 3
                                             color: "white"
-                                            border.color: "#566178"
+                                            border.color: Theme.accent
                                             MouseArea {
                                                 anchors.fill: parent
                                                 anchors.margins: -7
@@ -1566,14 +1565,14 @@ Rectangle {
                         width: renderLabel.implicitWidth + 20
                         height: 26
                         radius: 13
-                        color: "#35334d"
+                        color: Theme.accentSoft
                         visible: renderProcess.running
                         Text {
                             id: renderLabel
                             anchors.centerIn: parent
                             text: root.previewRender ? "Updating preview…" : "Saving…"
                             font.pixelSize: 10
-                            color: "#d1cdf7"
+                            color: Theme.text
                         }
                     }
                     Button {
@@ -1596,12 +1595,12 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: "#3b3e4c"
+            color: Theme.border
         }
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 43
-            color: "#252936"
+            color: Theme.panel
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 12
@@ -1616,10 +1615,6 @@ Rectangle {
                 }
                 ComboBox {
                     id: zoomPicker
-                    palette.base: "#303542"
-                    palette.text: "#d2d7e4"
-                    palette.button: "#353a49"
-                    palette.buttonText: "#b8c1d6"
                     implicitWidth: 84
                     implicitHeight: 29
                     font.pixelSize: 11
@@ -1640,7 +1635,7 @@ Rectangle {
                 Rectangle {
                     width: 1
                     Layout.preferredHeight: 18
-                    color: "#414555"
+                    color: Theme.border
                     Layout.leftMargin: 7
                     Layout.rightMargin: 7
                 }
@@ -1670,8 +1665,8 @@ Rectangle {
                         width: Math.min(104, parent.width)
                         height: 27
                         radius: 13.5
-                        color: dragMouse.containsMouse ? "#3f4359" : "#303544"
-                        border.color: "#484e64"
+                        color: dragMouse.containsMouse ? Theme.raised : Theme.surface
+                        border.color: Theme.border
                         readonly property bool ready: !root.busy && root.previewReady
                         opacity: ready ? 1 : .6
                         Row {
@@ -1680,11 +1675,11 @@ Rectangle {
                             Icon {
                                 name: "drag"
                                 size: 13
-                                color: "#a9b2c8"
+                                color: Theme.textMuted
                             }
                             Text {
                                 text: dragPill.ready ? "Drag Me" : "Updating…"
-                                color: "#bdc4d7"
+                                color: Theme.textSoft
                                 font.pixelSize: 10
                             }
                         }
@@ -1717,7 +1712,7 @@ Rectangle {
                 Text {
                     visible: root.width > 850
                     text: Math.round(root.renderedWidth) + " × " + Math.round(root.renderedHeight)
-                    color: "#8994ac"
+                    color: Theme.textMuted
                     font.pixelSize: 10
                     Layout.rightMargin: 9
                 }
@@ -1761,6 +1756,7 @@ Rectangle {
     }
     Popup {
         id: inkPopup
+        palette: Theme.controls.palette
         x: Math.max(0, root.width - width - 130)
         y: 48
         width: 210
@@ -1768,8 +1764,8 @@ Rectangle {
         padding: 12
         background: Rectangle {
             radius: 9
-            color: "#292e3e"
-            border.color: "#505771"
+            color: Theme.panel
+            border.color: Theme.border
         }
         ColumnLayout {
             anchors.fill: parent
@@ -1783,7 +1779,7 @@ Rectangle {
                         height: 20
                         radius: 10
                         color: modelData
-                        border.color: root.ink === modelData ? "#ffffff" : "#5c6379"
+                        border.color: root.ink === modelData ? Theme.text : Theme.borderStrong
                         border.width: root.ink === modelData ? 2 : 1
                         MouseArea {
                             anchors.fill: parent

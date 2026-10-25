@@ -201,7 +201,7 @@ Item {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.namespace: "omashot-capture-selector"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-            color: "#090b12"
+            color: Theme.window
             onVisibleChanged: {
                 if (visible)
                     Qt.callLater(function () {
@@ -229,7 +229,7 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     visible: !root.hasSelection
-                    color: "#12050810"
+                    color: Theme.alpha(Theme.darkest, 0.07)
                 }
                 Item {
                     visible: root.hasSelection
@@ -239,28 +239,28 @@ Item {
                         y: 0
                         width: parent.width
                         height: Math.max(0, Math.min(parent.height, surface.topEdge))
-                        color: "#80060913"
+                        color: Theme.scrim
                     }
                     Rectangle {
                         x: 0
                         y: Math.max(0, surface.topEdge + root.selectionHeight)
                         width: parent.width
                         height: Math.max(0, parent.height - y)
-                        color: "#80060913"
+                        color: Theme.scrim
                     }
                     Rectangle {
                         x: 0
                         y: Math.max(0, surface.topEdge)
                         width: Math.max(0, Math.min(parent.width, surface.leftEdge))
                         height: Math.max(0, Math.min(parent.height, surface.topEdge + root.selectionHeight) - y)
-                        color: "#80060913"
+                        color: Theme.scrim
                     }
                     Rectangle {
                         x: Math.max(0, surface.leftEdge + root.selectionWidth)
                         y: Math.max(0, surface.topEdge)
                         width: Math.max(0, parent.width - x)
                         height: Math.max(0, Math.min(parent.height, surface.topEdge + root.selectionHeight) - y)
-                        color: "#80060913"
+                        color: Theme.scrim
                     }
                     Rectangle {
                         x: surface.leftEdge
@@ -269,7 +269,7 @@ Item {
                         height: root.selectionHeight
                         color: "transparent"
                         border.width: 1
-                        border.color: "#b9acff"
+                        border.color: Theme.accent
                     }
                 }
                 Item {
@@ -279,14 +279,14 @@ Item {
                         x: surface.localPointerX
                         width: 1
                         height: parent.height
-                        color: "#e98aa6"
+                        color: Theme.danger
                         opacity: 0.75
                     }
                     Rectangle {
                         y: surface.localPointerY
                         height: 1
                         width: parent.width
-                        color: "#e98aa6"
+                        color: Theme.danger
                         opacity: 0.75
                     }
                 }
@@ -328,8 +328,8 @@ Item {
                             width: 8
                             height: 8
                             radius: 4
-                            color: "#f4efff"
-                            border.color: "#7264c5"
+                            color: Theme.lightest
+                            border.color: Theme.accent
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -355,9 +355,9 @@ Item {
                     radius: 8
                     x: surface.localPointerX + 28 + width < surface.width - 10 ? surface.localPointerX + 28 : surface.localPointerX - width - 28
                     y: surface.localPointerY + 28 + height < surface.height - 10 ? surface.localPointerY + 28 : surface.localPointerY - height - 28
-                    color: "#10131d"
+                    color: Theme.window
                     border.width: 2
-                    border.color: "#b3a5ee"
+                    border.color: Theme.accent
                     clip: true
                     Image {
                         x: magnifier.width / 2 - (Math.floor((root.pointerX - root.originX) * root.imageScale) + 0.5) * magnifier.zoom
@@ -373,14 +373,14 @@ Item {
                         x: parent.width / 2 - 1
                         width: 2
                         height: parent.height
-                        color: "#ec789f"
+                        color: Theme.danger
                         opacity: 0.7
                     }
                     Rectangle {
                         y: parent.height / 2 - 1
                         height: 2
                         width: parent.width
-                        color: "#ec789f"
+                        color: Theme.danger
                         opacity: 0.7
                     }
                     Rectangle {
@@ -389,14 +389,14 @@ Item {
                         width: 8
                         height: 8
                         color: "transparent"
-                        border.color: "#ffffff"
+                        border.color: Theme.lightest
                     }
                     Rectangle {
                         anchors.fill: parent
                         color: "transparent"
                         radius: 8
                         border.width: 2
-                        border.color: "#b3a5ee"
+                        border.color: Theme.accent
                     }
                 }
                 Rectangle {
@@ -406,12 +406,12 @@ Item {
                     implicitWidth: coordinates.implicitWidth + 16
                     implicitHeight: 25
                     radius: 6
-                    color: "#ec202332"
+                    color: Theme.alpha(Theme.window, 0.92)
                     Text {
                         id: coordinates
                         anchors.centerIn: parent
                         text: Math.round(root.pointerX) + ", " + Math.round(root.pointerY)
-                        color: "#eeeeff"
+                        color: Theme.text
                         font.pixelSize: 11
                     }
                 }
@@ -421,8 +421,8 @@ Item {
                     implicitWidth: actionRow.implicitWidth + 16
                     implicitHeight: 44
                     radius: 10
-                    color: "#f0202330"
-                    border.color: "#68617f"
+                    color: Theme.alpha(Theme.panel, 0.94)
+                    border.color: Theme.border
                     x: root.clamp(surface.leftEdge + root.selectionWidth / 2 - width / 2, 10, surface.width - width - 10)
                     y: surface.topEdge + root.selectionHeight + height + 12 < surface.height ? surface.topEdge + root.selectionHeight + 12 : surface.topEdge - height - 12 > 10 ? surface.topEdge - height - 12 : root.clamp(surface.topEdge + 16, 10, surface.height - height - 10)
                     RowLayout {
@@ -431,7 +431,7 @@ Item {
                         spacing: 8
                         Text {
                             text: root.pixelWidth + " × " + root.pixelHeight + " px"
-                            color: "#e7e1f6"
+                            color: Theme.text
                             font.pixelSize: 12
                             leftPadding: 4
                             rightPadding: 8
@@ -459,12 +459,12 @@ Item {
                     implicitWidth: hint.implicitWidth + 28
                     implicitHeight: 33
                     radius: 9
-                    color: "#eb202332"
+                    color: Theme.alpha(Theme.window, 0.92)
                     Text {
                         id: hint
                         anchors.centerIn: parent
                         text: "Drag to select · Enter to capture · Esc to cancel"
-                        color: "#d9d6e9"
+                        color: Theme.textSoft
                         font.pixelSize: 12
                     }
                 }

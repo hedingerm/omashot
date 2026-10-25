@@ -6,7 +6,7 @@ import Quickshell.Io
 
 Rectangle {
     id: root
-    color: "#202330"
+    color: Theme.panel
     property string backend: "omashot"
     property var customPresets: []
     property var wallpapers: []
@@ -214,6 +214,7 @@ Rectangle {
     }
     Dialog {
         id: savePreset
+        palette: Theme.controls.palette
         title: "Save background style"
         modal: true
         anchors.centerIn: parent
@@ -250,6 +251,12 @@ Rectangle {
                 thumbnail.loadImage(imageSource);
             thumbnail.requestPaint();
         }
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 2
+            radius: 7
+            color: Theme.surface
+        }
         Canvas {
             id: thumbnail
             anchors.fill: parent
@@ -271,8 +278,6 @@ Rectangle {
                 c.quadraticCurveTo(0, 0, r, 0);
                 c.closePath();
                 c.clip();
-                c.fillStyle = "#333747";
-                c.fillRect(0, 0, w, h);
                 if (thumb.imageSource && isImageLoaded(thumb.imageSource))
                     c.drawImage(thumb.imageSource, 0, 0, w, h);
             }
@@ -286,7 +291,7 @@ Rectangle {
             color: "transparent"
             radius: 10
             border.width: thumb.selected ? 2 : 1
-            border.color: thumb.selected ? "#9d9aff" : "#4a4e60"
+            border.color: thumb.selected ? Theme.accent : Theme.border
         }
         MouseArea {
             id: thumbMouse
@@ -299,7 +304,7 @@ Rectangle {
         ToolTip.delay: 500
     }
     component Caption: Text {
-        color: "#aeb6c9"
+        color: Theme.textSoft
         font.pixelSize: 11
         font.weight: Font.Medium
         Layout.fillWidth: true
@@ -322,7 +327,7 @@ Rectangle {
             }
             Text {
                 text: Math.round(control.value) + control.suffix
-                color: "#7f899f"
+                color: Theme.textMuted
                 font.pixelSize: 10
             }
         }
@@ -341,12 +346,12 @@ Rectangle {
                 width: slide.availableWidth
                 height: 4
                 radius: 2
-                color: "#414757"
+                color: Theme.border
                 Rectangle {
                     width: slide.visualPosition * parent.width
                     height: parent.height
                     radius: 2
-                    color: "#8b87ff"
+                    color: Theme.accent
                 }
             }
             handle: Rectangle {
@@ -355,8 +360,8 @@ Rectangle {
                 width: 13
                 height: 13
                 radius: 6.5
-                color: "#e6e6f2"
-                border.color: "#9ca1b9"
+                color: Theme.lightest
+                border.color: Theme.borderStrong
             }
         }
     }
@@ -376,10 +381,6 @@ Rectangle {
                 Layout.fillWidth: true
                 ComboBox {
                     id: presetPicker
-                    palette.base: "#303542"
-                    palette.text: "#d2d7e4"
-                    palette.button: "#353a49"
-                    palette.buttonText: "#b8c1d6"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     implicitHeight: 29
@@ -425,12 +426,12 @@ Rectangle {
                 onClicked: root.disable()
                 background: Rectangle {
                     radius: 5
-                    color: !root.backgroundEnabled ? "#41415c" : "#303440"
-                    border.color: !root.backgroundEnabled ? "#8980d9" : "transparent"
+                    color: !root.backgroundEnabled ? Theme.accentSoft : Theme.surface
+                    border.color: !root.backgroundEnabled ? Theme.accent : "transparent"
                 }
                 contentItem: Text {
                     text: "None"
-                    color: "#d9dce8"
+                    color: Theme.text
                     font.pixelSize: 11
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -447,20 +448,19 @@ Rectangle {
                     ToolButton {
                         text: root.gradientsExpanded ? "Show less" : "Show all"
                         font.pixelSize: 10
-                        palette.buttonText: "#aeb6c9"
                         onClicked: root.gradientsExpanded = !root.gradientsExpanded
                         implicitHeight: 22
                         contentItem: Row {
                             spacing: 4
                             Text {
                                 text: root.gradientsExpanded ? "Show less" : "Show all"
-                                color: "#aeb6c9"
+                                color: Theme.textSoft
                                 font.pixelSize: 10
                             }
                             Icon {
                                 name: "chevron"
                                 size: 12
-                                color: "#aeb6c9"
+                                color: Theme.textSoft
                                 rotation: root.gradientsExpanded ? 180 : 0
                             }
                         }
@@ -519,10 +519,12 @@ Rectangle {
                         height: root.tileSize
                         Canvas {
                             anchors.fill: parent
+                            property color stroke: Theme.borderStrong
+                            onStrokeChanged: requestPaint()
                             onPaint: {
                                 let c = getContext("2d");
                                 c.reset();
-                                c.strokeStyle = "#70778c";
+                                c.strokeStyle = stroke;
                                 c.lineWidth = 1.5;
                                 c.setLineDash([4, 4]);
                                 let left = 3, top = 3, right = width - 3, bottom = height - 3, r = 7;
@@ -544,7 +546,7 @@ Rectangle {
                             anchors.centerIn: parent
                             name: "plus"
                             size: 20
-                            color: "#c2c7d6"
+                            color: Theme.textSoft
                         }
                         MouseArea {
                             id: addWallpaperMouse
@@ -588,7 +590,7 @@ Rectangle {
                                 color: "transparent"
                                 radius: 9
                                 border.width: root.backgroundEnabled && root.settings.mode === "blurred" && root.settings.image_path === (modelData.source ? "" : modelData.path) && root.settings.blur === modelData.blur ? 2 : 1
-                                border.color: "#73758e"
+                                border.color: Theme.borderStrong
                             }
                             MouseArea {
                                 id: blurMouse
@@ -658,7 +660,7 @@ Rectangle {
                                 }
                             }
                             border.width: root.backgroundEnabled && root.settings.mode === "solid" && root.settings.background_color === modelData ? 2 : 1
-                            border.color: root.backgroundEnabled && root.settings.mode === "solid" && root.settings.background_color === modelData ? "#aaa4ff" : "#5b5f70"
+                            border.color: root.backgroundEnabled && root.settings.mode === "solid" && root.settings.background_color === modelData ? Theme.accent : Theme.borderStrong
                             MouseArea {
                                 id: solidMouse
                                 anchors.fill: parent
@@ -677,7 +679,7 @@ Rectangle {
             Rectangle {
                 Layout.fillWidth: true
                 height: 1
-                color: "#343846"
+                color: Theme.border
             }
             SettingSlider {
                 label: "Padding"
@@ -704,7 +706,6 @@ Rectangle {
                     text: "Auto-balance"
                     checked: root.settings.auto_balance
                     font.pixelSize: 10
-                    palette.windowText: "#aeb6c9"
                     Layout.alignment: Qt.AlignBottom
                     implicitHeight: 28
                     onClicked: root.update("auto_balance", checked)
@@ -768,13 +769,13 @@ Rectangle {
                                 width: 27
                                 height: 21
                                 radius: 4
-                                color: root.settings.alignment === modelData ? "#6557c8" : "transparent"
-                                border.color: root.settings.alignment === modelData ? "#8f82ea" : "#686f83"
+                                color: root.settings.alignment === modelData ? Theme.accent : "transparent"
+                                border.color: root.settings.alignment === modelData ? Theme.accentHover : Theme.borderStrong
                                 Rectangle {
                                     width: 11
                                     height: 7
                                     radius: 1
-                                    color: root.settings.alignment === modelData ? "#ffffff" : "#949db1"
+                                    color: root.settings.alignment === modelData ? Theme.accentText : Theme.textMuted
                                     x: index % 3 === 0 ? 3 : index % 3 === 1 ? 8 : 13
                                     y: index < 3 ? 3 : index < 6 ? 7 : 11
                                 }
@@ -801,10 +802,6 @@ Rectangle {
                         text: "Ratio"
                     }
                     ComboBox {
-                        palette.base: "#303542"
-                        palette.text: "#d2d7e4"
-                        palette.button: "#353a49"
-                        palette.buttonText: "#b8c1d6"
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         implicitHeight: 29
@@ -827,7 +824,7 @@ Rectangle {
                 Layout.fillWidth: true
                 visible: root.message.length > 0
                 text: root.message
-                color: "#e1a6b2"
+                color: Theme.danger
                 wrapMode: Text.Wrap
                 font.pixelSize: 10
             }

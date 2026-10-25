@@ -130,7 +130,7 @@ def install(repo, binary, reload):
             fail(f'Refusing to replace unowned file: {dest}')
         if dest.exists() and digest(dest) != owned.get(str(dest)):
             fail(f'Installed file was edited; move it aside before updating: {dest}')
-    restart = bool(owned) and any(str(dest) not in owned for dest in files if dest.suffix in ['.qml', '.js'])
+    restart = bool(owned) and any(str(dest) not in owned for dest in files if dest.suffix in ['.qml', '.js'] or dest.name == 'qmldir')
     backup_shell()
     installed = {}
     for dest, source in files.items():

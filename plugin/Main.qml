@@ -529,7 +529,7 @@ Item {
         implicitWidth: 1220
         implicitHeight: 850
         minimumSize: Qt.size(760, 560)
-        color: "#15171f"
+        color: Theme.window
         onClosed: root.close()
         Shortcut {
             sequence: "Escape"
@@ -545,13 +545,21 @@ Item {
             }
         }
         ColumnLayout {
+            id: windowContent
             anchors.fill: parent
             spacing: 0
+            palette: Theme.controls.palette
+            // Popups and the shared ToolTip don't inherit item palettes.
+            Binding {
+                target: windowContent.ToolTip.toolTip
+                property: "palette"
+                value: Theme.controls.palette
+            }
             Rectangle {
                 visible: !root.editing
                 Layout.fillWidth: true
                 implicitHeight: 58
-                color: "#20222d"
+                color: Theme.panel
                 Flickable {
                     id: topStrip
                     anchors.fill: parent
@@ -580,7 +588,7 @@ Item {
                             text: "OmaShot"
                             font.pixelSize: 16
                             font.weight: Font.DemiBold
-                            color: "#f1effa"
+                            color: Theme.text
                             rightPadding: 16
                         }
                         IconButton {
@@ -622,7 +630,7 @@ Item {
                         Rectangle {
                             implicitWidth: 1
                             implicitHeight: 22
-                            color: "#3e4052"
+                            color: Theme.border
                             Layout.leftMargin: 7
                             Layout.rightMargin: 7
                         }
@@ -697,7 +705,7 @@ Item {
                 visible: !root.editing
                 Layout.fillWidth: true
                 implicitHeight: 1
-                color: "#323542"
+                color: Theme.border
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -707,7 +715,7 @@ Item {
                     visible: root.showHistory
                     Layout.preferredWidth: Math.min(226, window.width * 0.35)
                     Layout.fillHeight: true
-                    color: "#1c1e29"
+                    color: Theme.panel
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 14
@@ -717,13 +725,13 @@ Item {
                                 text: "History"
                                 font.pixelSize: 15
                                 font.weight: Font.DemiBold
-                                color: "#e8e6f3"
+                                color: Theme.text
                                 Layout.fillWidth: true
                             }
                             Label {
                                 text: String(root.captures.length)
                                 font.pixelSize: 12
-                                color: "#8d91a8"
+                                color: Theme.textMuted
                             }
                         }
                         TextField {
@@ -753,8 +761,8 @@ Item {
                                 }
                                 background: Rectangle {
                                     radius: 9
-                                    color: root.current === modelData.path ? "#34304c" : "#252835"
-                                    border.color: root.current === modelData.path ? "#9d8bf3" : "#343747"
+                                    color: root.current === modelData.path ? Theme.accentSoft : Theme.surface
+                                    border.color: root.current === modelData.path ? Theme.accent : Theme.border
                                 }
                                 contentItem: ColumnLayout {
                                     spacing: 7
@@ -771,13 +779,13 @@ Item {
                                         Label {
                                             text: root.dateLabel(modelData.modified)
                                             font.pixelSize: 11
-                                            color: "#c7c5d7"
+                                            color: Theme.textSoft
                                             Layout.fillWidth: true
                                         }
                                         Label {
                                             text: modelData.width + "×" + modelData.height
                                             font.pixelSize: 10
-                                            color: "#858aa1"
+                                            color: Theme.textMuted
                                         }
                                     }
                                     Item {
@@ -792,11 +800,11 @@ Item {
                                             padding: 3
                                             background: Rectangle {
                                                 radius: 12
-                                                color: parent.hovered ? "#8f79f0" : "#7258d8"
+                                                color: parent.hovered ? Theme.accentHover : Theme.accent
                                             }
                                             contentItem: Text {
                                                 text: parent.text
-                                                color: "white"
+                                                color: Theme.accentText
                                                 font.pixelSize: 11
                                                 horizontalAlignment: Text.AlignHCenter
                                                 verticalAlignment: Text.AlignVCenter
@@ -810,14 +818,14 @@ Item {
                                 anchors.centerIn: parent
                                 visible: root.captures.length === 0
                                 text: "No captures"
-                                color: "#878ba0"
+                                color: Theme.textMuted
                                 font.pixelSize: 12
                             }
                         }
                         Label {
                             text: root.preferences.retention_days === 0 ? "Kept until deleted" : "Kept for " + (root.preferences.retention_days === undefined ? 30 : root.preferences.retention_days) + " days"
                             font.pixelSize: 11
-                            color: "#858aa1"
+                            color: Theme.textMuted
                         }
                     }
                 }
@@ -871,18 +879,18 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             name: "capture"
                             size: 46
-                            color: "#71688f"
+                            color: Theme.mix(Theme.accent, Theme.window, 0.35)
                         }
                         Text {
                             text: "Make room for a good shot."
-                            color: "#d6d3e5"
+                            color: Theme.textSoft
                             font.pixelSize: 21
                             font.weight: Font.Medium
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "Capture an area, or open an image."
-                            color: "#81859d"
+                            color: Theme.textMuted
                             font.pixelSize: 13
                         }
                     }
@@ -920,7 +928,7 @@ Item {
                 visible: !root.editing
                 Layout.fillWidth: true
                 implicitHeight: 55
-                color: "#20222d"
+                color: Theme.panel
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 14
@@ -939,8 +947,8 @@ Item {
                         implicitWidth: 110
                         implicitHeight: 30
                         radius: 15
-                        color: "#292c3a"
-                        border.color: "#414555"
+                        color: Theme.surface
+                        border.color: Theme.border
                         visible: !!root.current
                         Row {
                             anchors.centerIn: parent
@@ -948,11 +956,11 @@ Item {
                             Icon {
                                 name: "drag"
                                 size: 14
-                                color: "#8e92a9"
+                                color: Theme.textMuted
                             }
                             Text {
                                 text: "Drag Me"
-                                color: "#bcbcd0"
+                                color: Theme.textSoft
                                 font.pixelSize: 11
                             }
                         }
@@ -1010,13 +1018,13 @@ Item {
                 visible: !["Ready", "Done"].includes(root.status)
                 Layout.fillWidth: true
                 implicitHeight: statusLabel.implicitHeight + 16
-                color: "#292335"
+                color: Theme.accentSoft
                 Label {
                     id: statusLabel
                     anchors.fill: parent
                     anchors.margins: 8
                     text: root.status
-                    color: "#d0c2ee"
+                    color: Theme.text
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
                 }
@@ -1024,6 +1032,7 @@ Item {
         }
         Menu {
             id: pinsMenu
+            palette: Theme.controls.palette
             x: Math.max(10, window.width - width - 60)
             y: 55
             MenuItem {
@@ -1037,6 +1046,7 @@ Item {
         }
         Menu {
             id: imageMenu
+            palette: Theme.controls.palette
             x: window.width - width - 14
             y: window.height - height - 55
             MenuItem {
@@ -1055,6 +1065,7 @@ Item {
         }
         Popup {
             id: captureOptions
+            palette: Theme.controls.palette
             x: 160
             y: 55
             padding: 18
@@ -1088,6 +1099,7 @@ Item {
         }
         Dialog {
             id: cancelEdits
+            palette: Theme.controls.palette
             title: "Discard unsaved edits?"
             anchors.centerIn: parent
             standardButtons: Dialog.Discard | Dialog.Cancel
@@ -1095,6 +1107,7 @@ Item {
         }
         Dialog {
             id: deletion
+            palette: Theme.controls.palette
             title: "Delete this capture from history?"
             anchors.centerIn: parent
             standardButtons: Dialog.Ok | Dialog.Cancel
@@ -1105,6 +1118,7 @@ Item {
         }
         Dialog {
             id: output
+            palette: Theme.controls.palette
             title: "Result"
             anchors.centerIn: parent
             width: Math.min(650, window.width - 40)
@@ -1122,6 +1136,7 @@ Item {
         }
         Dialog {
             id: settings
+            palette: Theme.controls.palette
             title: "Preferences"
             anchors.centerIn: parent
             width: Math.min(650, window.width - 40)
@@ -1468,6 +1483,7 @@ Item {
             color: "transparent"
             Item {
                 anchors.fill: parent
+                palette: Theme.controls.palette
                 HoverHandler {
                     id: pinHover
                 }
@@ -1498,7 +1514,7 @@ Item {
                     radius: 9
                     color: "transparent"
                     border.width: 1
-                    border.color: pinHover.hovered ? "#c8c4d7" : "#507d7b88"
+                    border.color: pinHover.hovered ? Theme.accent : Theme.alpha(Theme.borderStrong, 0.6)
                 }
                 MouseArea {
                     anchors.fill: parent
@@ -1530,12 +1546,12 @@ Item {
                     width: 48
                     height: 20
                     radius: 10
-                    color: "#c022222b"
+                    color: Theme.alpha(Theme.window, 0.85)
                     Text {
                         anchors.centerIn: parent
                         text: Math.round(pinWindow.implicitWidth / Math.max(1, photo.sourceSize.width) * 100) + "%"
                         font.pixelSize: 10
-                        color: "white"
+                        color: Theme.text
                     }
                 }
                 IconButton {
@@ -1551,12 +1567,12 @@ Item {
                     text: "Unpin screenshot"
                     background: Rectangle {
                         radius: 12
-                        color: "#e7eeeeF4"
+                        color: Theme.alpha(Theme.window, 0.9)
                     }
                     contentItem: Icon {
                         name: "close"
                         size: 13
-                        color: "#30303a"
+                        color: Theme.text
                     }
                     onClicked: {
                         let p = root.pins.slice();
@@ -1577,12 +1593,12 @@ Item {
                     text: "Pass clicks through; restore interaction from pinned screenshot controls"
                     background: Rectangle {
                         radius: 12
-                        color: "#e7eeeeF4"
+                        color: Theme.alpha(Theme.window, 0.9)
                     }
                     contentItem: Icon {
                         name: "pin"
                         size: 13
-                        color: "#30303a"
+                        color: Theme.text
                     }
                     onClicked: pinWindow.clickThrough = true
                 }
@@ -1594,7 +1610,7 @@ Item {
                     width: Math.min(120, parent.width - 64)
                     height: 22
                     radius: 11
-                    color: "#cc252530"
+                    color: Theme.alpha(Theme.window, 0.8)
                     Slider {
                         anchors.fill: parent
                         anchors.leftMargin: 8
@@ -1622,12 +1638,12 @@ Item {
                     text: "Move to display / resize"
                     background: Rectangle {
                         radius: 12
-                        color: "#e7eeeeF4"
+                        color: Theme.alpha(Theme.window, 0.9)
                     }
                     contentItem: Icon {
                         name: "more"
                         size: 13
-                        color: "#30303a"
+                        color: Theme.text
                     }
                     onClicked: pinMenu.open()
                 }
@@ -1645,12 +1661,12 @@ Item {
                     text: "Drag to resize"
                     background: Rectangle {
                         radius: 12
-                        color: "#e7eeeeF4"
+                        color: Theme.alpha(Theme.window, 0.9)
                     }
                     contentItem: Icon {
                         name: "resize"
                         size: 13
-                        color: "#30303a"
+                        color: Theme.text
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -1671,6 +1687,7 @@ Item {
                 }
                 Menu {
                     id: pinMenu
+                    palette: Theme.controls.palette
                     x: 8
                     y: 28
                     MenuItem {

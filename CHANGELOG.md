@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- The UI follows the active Omarchy theme live, including light themes. Theme switches fade over 420 ms like the Omarchy shell and hold 60 fps. `OMASHOT_THEME_PATH` previews another theme directory.
+
+### Changed
+
+- The installer restarts the Omarchy shell when `qmldir` is new, so new singletons register.
+- README screenshots are rendered in the Tokyo Night theme (`OMASHOT_SCREENSHOT_THEME` overrides it).
+
 ## [0.4.0] - 2026-10-25
 
 First public release.

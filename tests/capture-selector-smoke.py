@@ -8,7 +8,7 @@ BIN=ROOT/'target/release/omashot'
 with tempfile.TemporaryDirectory(prefix='omashot-selector-test-') as directory:
     temp=Path(directory);plugin=temp/'plugin'
     plugin.mkdir()
-    for name in ['CaptureSelector.qml','Icon.qml','IconButton.qml']:
+    for name in ['CaptureSelector.qml','Icon.qml','IconButton.qml','Theme.qml','qmldir']:
         shutil.copyfile(ROOT/'plugin'/name,plugin/name)
     env=dict(os.environ,OMASHOT_BACKEND=str(BIN),XDG_DATA_HOME=str(temp/'data'),XDG_CONFIG_HOME=str(temp/'config'))
     def command(*args):

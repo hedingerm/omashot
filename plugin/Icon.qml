@@ -1,10 +1,11 @@
 import QtQuick
+import QtQuick.Effects
 
 // Original 24 px line icons. SVG rendering avoids font dependencies and missing glyphs.
 Image {
     id: root
     property string name: "more"
-    property color color: "#dce4f0"
+    property color color: Theme.text
     property int size: 20
     width: size
     height: size
@@ -66,5 +67,14 @@ Image {
             "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>'
         })
     readonly property string resolvedName: name === "chevron-down" ? "chevron" : name === "wallpaper" ? "image" : name
-    source: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + color.toString() + '" color="' + color.toString() + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (drawings[resolvedName] || drawings.more) + '</svg>')
+    source: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + ink + '" color="' + ink + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (drawings[resolvedName] || drawings.more) + '</svg>')
+    // Rasterize once in white and tint on the GPU so theme fades never re-render SVGs;
+    // the software renderer (offscreen tests) has no shader effects, so bake the color there.
+    readonly property bool tinted: GraphicsInfo.api !== GraphicsInfo.Software
+    readonly property string ink: tinted ? "#ffffff" : color.toString()
+    layer.enabled: tinted
+    layer.effect: MultiEffect {
+        colorization: 1
+        colorizationColor: root.color
+    }
 }

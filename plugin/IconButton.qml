@@ -19,13 +19,13 @@ Button {
     contentItem: Icon {
         name: root.iconName
         size: root.iconSize
-        color: !root.enabled ? "#637087" : root.selected || root.checked ? "#ffffff" : "#dce4f0"
+        color: !root.enabled ? Theme.textDisabled : root.selected || root.checked ? Theme.accentText : Theme.text
     }
     background: Rectangle {
         radius: 8
-        color: root.down ? "#6959cc" : root.selected || root.checked ? "#6251c4" : root.hovered ? "#30384d" : "transparent"
+        color: root.down ? Theme.accentPressed : root.selected || root.checked ? Theme.accent : root.hovered ? Theme.raised : "transparent"
         border.width: root.activeFocus ? 1 : 0
-        border.color: "#b5a8ff"
+        border.color: Theme.accentHover
         opacity: root.enabled ? 1 : 0.5
         Behavior on color { ColorAnimation { duration: 100 } }
     }
