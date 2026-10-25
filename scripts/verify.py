@@ -9,6 +9,7 @@ timeout and its output in a log file, and reports PASS/FAIL/BLOCKED/SKIP. Exits 
   scripts/verify.py CHECK...        only the named checks or groups;  --list shows them
   --no-live  skip live Wayland checks (reported, never a full pass)   --keep  keep logs on success   --why  explain selection
   --serial   run one check at a time (default: offscreen checks in parallel with the serial live lane, timing gates last)
+  --desktop  run live checks on your visible desktop (default: a hidden headless Hyprland, so you can keep working)
 See .agents/skills/verify-project/SKILL.md."""
 import concurrent.futures as cf,json,os,pathlib,re,shutil,signal,subprocess,sys,tempfile,threading,time
 root=pathlib.Path(__file__).resolve().parents[1]
@@ -86,11 +87,12 @@ def select(files,why):
   if why:print(f'  {f}: '+('unknown or unregistered path, full' if rule is None else ', '.join(extra) or 'static only'))
   picked+=extra
  return [c for c in CHECKS if c in picked]
-def missing(req):
+def missing(req,env=None):
+ env=os.environ if env is None else env
  out=[]
  for r in req:
   if r=='wayland':
-   if not (os.environ.get('WAYLAND_DISPLAY') and os.environ.get('HYPRLAND_INSTANCE_SIGNATURE')):out.append('a Hyprland Wayland session (WAYLAND_DISPLAY, HYPRLAND_INSTANCE_SIGNATURE)')
+   if not (env.get('WAYLAND_DISPLAY') and env.get('HYPRLAND_INSTANCE_SIGNATURE')):out.append('a Hyprland Wayland session (WAYLAND_DISPLAY, HYPRLAND_INSTANCE_SIGNATURE)')
    out+=[t for t in LIVE_TOOLS if not shutil.which(t)]
   elif r=='shell':
    if 'omarchy/shell' not in subprocess.run(['qs','list','--all'],capture_output=True,text=True).stdout:out.append('a running omarchy-shell (qs list --all)')
@@ -120,6 +122,36 @@ def shell_current(log):
   if started<newest-1:problems.append(f'omarchy-shell {inst[0]} started {inst[1]}, before the plugin files changed: run `omarchy restart shell`')
  log.write_text('\n'.join(problems or [f'installed plugin and binaries match this tree; shell {inst}'])+'\n')
  return not problems
+class Nested:
+ """A private Hyprland nested in the user's session: its window goes to a hidden special workspace and its only output
+ is headless (mirroring the focused monitor's mode and scale), so live checks never show windows, take focus, move the
+ real pointer or touch the real clipboard."""
+ def __init__(self,dir):self.dir=dir;self.proc=None;self.env=None
+ def start(self):
+  mon=next(m for m in json.loads(subprocess.check_output(['hyprctl','-j','monitors'],text=True)) if m['focused'])
+  # Runtime-only rule in the outer compositor (gone on the next config reload); aquamarine is the nested window's class.
+  subprocess.run(['hyprctl','eval','hl.window_rule({ match = { class = "^aquamarine$" }, workspace = "special:omashot-verify silent" })'],capture_output=True,timeout=5)
+  conf=self.dir/'nested-hyprland.conf'
+  conf.write_text(f"monitor = , {mon['width']}x{mon['height']}@{mon['refreshRate']:.2f}, 0x0, {mon['scale']}\n"
+   'animations {\n enabled = false\n}\nmisc {\n disable_hyprland_logo = true\n disable_splash_rendering = true\n}\necosystem {\n no_update_news = true\n no_donation_nag = true\n}\n')
+  before={i['instance'] for i in json.loads(subprocess.check_output(['hyprctl','-j','instances'],text=True))}
+  self.proc=subprocess.Popen(['Hyprland','-c',str(conf)],stdin=subprocess.DEVNULL,stdout=(self.dir/'nested-hyprland.log').open('wb'),stderr=subprocess.STDOUT,start_new_session=True)
+  for _ in range(100):
+   inst=[i for i in json.loads(subprocess.check_output(['hyprctl','-j','instances'],text=True)) if i['instance'] not in before and i['pid']==self.proc.pid]
+   if inst or self.proc.poll() is not None:break
+   time.sleep(0.1)
+  if not inst:raise RuntimeError(f'nested Hyprland did not start, see {self.dir}/nested-hyprland.log')
+  self.env={**os.environ,'WAYLAND_DISPLAY':inst[0]['wl_socket'],'HYPRLAND_INSTANCE_SIGNATURE':inst[0]['instance']}
+  ctl=lambda *a:subprocess.run(['hyprctl',*a],env=self.env,capture_output=True,text=True,timeout=5).stdout
+  ctl('output','create','headless')
+  for _ in range(50):
+   mons=json.loads(ctl('-j','monitors') or '[]')
+   if [m['name'] for m in mons]==['HEADLESS-1']:return
+   if 'HEADLESS-1' in [m['name'] for m in mons]:ctl('keyword','monitor','WAYLAND-1,disable')
+   time.sleep(0.2)
+  raise RuntimeError(f'nested Hyprland outputs: {[m["name"] for m in mons]}')
+ def stop(self):
+  if self.proc:kill(self.proc)
 class Clipboard:
  """ui-smoke/capture-flow overwrite the clipboard; save the first offered type and restore it afterwards."""
  def __init__(self,dir):self.file=dir/'clipboard.bin';self.type=None
@@ -136,10 +168,10 @@ def kill(p):
  try:os.killpg(p.pid,signal.SIGTERM);p.wait(5)
  except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait()
  except ProcessLookupError:pass
-def run(cmd,log,timeout):
+def run(cmd,log,timeout,env=None):
  # Output goes to a file, never a pipe: a wl-copy daemon spawned by a test would inherit the pipe and hang the run.
  with log.open('wb') as out:
-  p=subprocess.Popen(cmd,cwd=root,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,start_new_session=True);RUNNING.add(p)
+  p=subprocess.Popen(cmd,cwd=root,env=env,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,start_new_session=True);RUNNING.add(p)
   try:return p.wait(timeout=timeout)
   except subprocess.TimeoutExpired:kill(p);return 'timeout'
   finally:RUNNING.discard(p)
@@ -147,7 +179,7 @@ def main(argv):
  flags={a for a in argv if a.startswith('--')};names=[a for a in argv if not a.startswith('-')]
  base=argv[argv.index('--base')+1] if '--base' in argv else None
  if base:names.remove(base)
- unknown=flags-{'--full','--shell','--no-live','--keep','--why','--list','--base','--help','--serial'}
+ unknown=flags-{'--full','--shell','--no-live','--keep','--why','--list','--base','--help','--serial','--desktop'}
  if '--help' in flags or '-h' in argv or unknown:print(__doc__+(f'\nUnknown option(s): {", ".join(sorted(unknown))}' if unknown else ''));return 2 if unknown else 0
  if '--list' in flags:
   for g,ids in GROUPS.items():print(f'{g}: '+' '.join(ids))
@@ -175,17 +207,22 @@ def main(argv):
   group,cmd,req,bins,timeout=CHECKS[c];log=logs/f'{c}.log';t=time.monotonic()
   if c in skipped:r=(c,'SKIP',0,'--no-live')
   elif STOP.is_set():r=(c,'SKIP',0,'interrupted')
-  elif need:=missing(req):r=(c,'BLOCKED',0,'missing '+', '.join(need))
+  elif need:=missing(req,nested.env if nested and group=='live' else None):r=(c,'BLOCKED',0,'missing '+', '.join(need))
   elif bins and not built:r=(c,'BLOCKED',0,'build failed')
   else:
-   code=(0 if shell_current(log) else 1) if cmd is None else run(cmd,log,timeout)
+   code=(0 if shell_current(log) else 1) if cmd is None else run(cmd,log,timeout,nested.env if nested and group=='live' else None)
    tail=[l for l in log.read_text(errors='replace').splitlines() if l.strip()][-1:] if log.exists() else []
    r=(c,'PASS' if code==0 else 'FAIL',time.monotonic()-t,'' if code==0 else (f'{code}: ' if code=='timeout' else f'exit {code}: ')+(tail[0][:160] if tail else ''))
   with lock:results.append(r);print(f'{r[1]:7} {c:20} {r[2]:6.1f}s  {r[3]}',flush=True)
  def lane(ids):
   for c in ids:check(c)
- runnable=[c for c in selected if c not in skipped]
- if any(c in ('ui-smoke','capture-flow') for c in runnable) and not missing(['wayland']):clip=Clipboard(logs);clip.save()
+ runnable=[c for c in selected if c not in skipped];nested=None
+ if '--desktop' not in flags and any(CHECKS[c][0]=='live' for c in runnable) and not missing(['wayland']) and shutil.which('Hyprland'):
+  nested=Nested(logs)
+  try:nested.start();print('Live checks run in a hidden headless Hyprland (--desktop to use your screen)')
+  except Exception as e:nested.stop();nested.env={};results.append(('nested-session','FAIL',0,str(e)));print(f'FAIL    nested-session        {e}')  # live checks then report BLOCKED, never fall back to the desktop
+ # Shell checks still use the real desktop clipboard; the nested session has its own.
+ if any(c in ('ui-smoke','capture-flow') for c in runnable) and nested is None and not missing(['wayland']):clip=Clipboard(logs);clip.save()
  live=[c for c in selected if CHECKS[c][0] in ('live','shell') and c not in TIMED];timed=[c for c in selected if c in TIMED]
  offscreen=[c for c in selected if c not in live and c not in timed]
  try:
@@ -203,6 +240,7 @@ def main(argv):
  except KeyboardInterrupt:STOP.set();[kill(p) for p in list(RUNNING)];results.append(('interrupted','FAIL',0,'SIGINT/SIGTERM'));print('Interrupted')
  finally:
   if clip:clip.restore()
+  if nested:nested.stop()
  order={c:i for i,c in enumerate([r[0] for r in results if r[0].startswith('build-')]+selected)};results.sort(key=lambda r:order.get(r[0],len(order)))
  if shell_before and shell_instance()!=shell_before:
   results.append(('shell-stable','FAIL',0,f'omarchy-shell restarted during the run ({shell_before} -> {shell_instance()}); another session? rerun'));print(f'FAIL    shell-stable          {results[-1][3]}')

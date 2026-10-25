@@ -20,7 +20,7 @@ The runner builds `target/debug` and, when a selected test needs it, `target/rel
 
 Selection rules live in `RULES` in `scripts/verify.py`: unknown paths and the verification tooling itself select the full route; `src/` and `Cargo.*` select everything except the timing gates (~1 min); QML files select their headless and live tests; docs select only the static checks. When you add a test, add it to `CHECKS` (an unregistered `tests/*.py` change selects the full route).
 
-Live checks open real windows for a few seconds, `editor-latency` moves the pointer for ~90 s. Warn the user before a run if they might be screen sharing or typing. Never pipe the runner or a copying test into `tail`/`grep` (a `wl-copy` daemon inherits the pipe and hangs); redirect to a file.
+Live checks run in a private, hidden Hyprland nested in the session (window on `special:omashot-verify`, one headless output with the focused monitor's mode and scale, animations off, its own clipboard and pointer), so the user can keep working. If it can't start, live checks report BLOCKED; they never fall back to the desktop. `--desktop` runs them on the visible screen instead (real scanout, e.g. for latency evidence on the display; warn the user first, windows open and `editor-latency` moves the pointer for ~90 s). Shell checks always use the real session. Never pipe the runner or a copying test into `tail`/`grep` (a `wl-copy` daemon inherits the pipe and hangs); redirect to a file.
 
 ## What has to be true before "done"
 

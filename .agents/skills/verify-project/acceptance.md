@@ -29,3 +29,9 @@
 - **Result:** `scripts/verify.py --full` passed 28/28 three times, in 190 s, 163 s and 162 s, down from ~330 s run serially. `editor-latency` (~89 s, run alone) is now over half the wall time. It mostly waits for the backend's exact render to settle between steps.
 - **Interrupt under parallel load:** a SIGTERM after 25 s killed the running checks, skipped the queued ones and reported NOT PASSED. No test processes were left behind.
 - **Selection:** a `src/` change now selects 24 checks without the timing gates; `plugin/Editor.qml` still selects `editor-latency`.
+
+## 2026-10-25: hidden live session
+
+- **Change:** live checks run in a nested Hyprland (`Nested` in `scripts/verify.py`) instead of on the user's desktop; `--desktop` keeps the old behavior.
+- **Result:** `scripts/verify.py --full` passed 28/28 with nothing shown on screen; `isolated-window` + `scroll` passed 3/3 repeated runs. `editor-latency` still passes the 50 ms p90 gate on the headless output.
+- **Pitfalls found:** Hyprland's default open animations made `isolated-window` and `scroll` capture a still-growing window (nested config disables animations); creating the headless output and disabling `WAYLAND-1` right after raced, so the runner retries until only `HEADLESS-1` remains.
