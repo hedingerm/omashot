@@ -160,4 +160,38 @@ ShellRoot { FloatingWindow { implicitWidth:1100;implicitHeight:800;visible:true
     restored = subprocess.run(['qs', '-p', harness], env=env, text=True,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=25)
     assert restored.returncode == 0 and 'RESTORED' in restored.stdout and 'TEST_ERROR=' not in restored.stdout, restored.stdout
-print('PASS: live gradient/padding/inset/radius/shadow, coalesced undo/redo, wallpaper import+blur, presets, zoom, save and editable project restore')
+    # Last-used tool options and background come back on the next fresh capture; a vanished wallpaper is skipped.
+    second = temp / 'second.png'
+    run(['magick', '-size', '400x300', 'xc:#dde3f0', second], env)
+    env.update(OMASHOT_SOURCE=str(source), OMASHOT_SECOND=str(second))
+    harness.write_text('''import QtQuick
+import Quickshell
+ShellRoot { FloatingWindow { implicitWidth:1100;implicitHeight:800;visible:true
+    Editor { id:edit;anchors.fill:parent;sourcePath:Quickshell.env("OMASHOT_SOURCE");backend:Quickshell.env("OMASHOT_BACKEND")
+        property var used:null
+        onSettingsUsed:function(s){used=s} }
+    Timer { interval:60;repeat:true;running:true;property int phase:0
+        function require(ok,message){if(!ok){console.error("TEST_ERROR="+message);Qt.quit();throw new Error(message)}}
+        onTriggered:{
+        if(edit.busy || !edit.previewReady)return
+        if(phase===0){edit.lastTool="arrow";edit.ink="#22aa44";edit.strokeWidth=9;edit.textStyle="boxed";edit.redactionMode="blur";edit.cropRatio="16:9";edit.sidebarVisible=false
+            edit.backgroundControl.selectGradient(3);edit.backgroundControl.update("padding",40);phase=1}
+        else if(phase===1 && edit.used && edit.used.background && edit.used.background.padding===40){
+            require(edit.used.tool==="arrow" && edit.used.ink==="#22aa44" && edit.used.stroke_width===9,"Settings reported")
+            edit.savedSettings=edit.used;edit.ink="#ff657a";edit.strokeWidth=4;edit.tool="select";edit.sidebarVisible=true
+            edit.sourcePath=Quickshell.env("OMASHOT_SECOND");phase=2}
+        else if(phase===2){
+            require(edit.tool==="arrow" && edit.ink==="#22aa44" && edit.strokeWidth===9 && edit.textStyle==="boxed" && edit.redactionMode==="blur" && edit.cropRatio==="16:9" && !edit.sidebarVisible,"Tool options restored")
+            var bg=edit.backgroundOperation()
+            require(edit.operations.length===1 && bg && bg.preset===3 && bg.padding===40 && edit.backgroundControl.settings.padding===40,"Background restored")
+            require(edit.contentRect.x===40,"Restored background renders");edit.undo();require(!edit.operations.length,"Restored background undoes")
+            var gone=Object.assign({},edit.savedSettings);gone.background={type:"background",mode:"wallpaper",image_path:"/nonexistent/wallpaper-1.png"}
+            edit.savedSettings=gone;edit.sourcePath=Quickshell.env("OMASHOT_SOURCE");phase=3}
+        else if(phase===3){require(!edit.operations.length,"Missing wallpaper skipped");console.log("REMEMBERED");Qt.quit()}
+    } }
+    Timer { interval:30000;running:true;onTriggered:{console.error("TEST_ERROR=Remember timeout");Qt.quit()} }
+} }''')
+    remembered = subprocess.run(['qs', '-p', harness], env=env, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=35)
+    assert remembered.returncode == 0 and 'REMEMBERED' in remembered.stdout and 'TEST_ERROR=' not in remembered.stdout, remembered.stdout
+print('PASS: live gradient/padding/inset/radius/shadow, coalesced undo/redo, wallpaper import+blur, presets, zoom, save, editable project restore and remembered editor settings')

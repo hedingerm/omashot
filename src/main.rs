@@ -122,6 +122,9 @@ fn validate_config(c: &Value) -> Result<()> {
     {
         return Err(err("corners must be auto, square or rounded"));
     }
+    if !c["editor"].is_null() && !c["editor"].is_object() {
+        return Err(err("editor must be an object"));
+    }
     if c["hide_desktop_icons"].as_bool().unwrap_or(false) {
         desktop_hook(c, "desktop_hide_argv")?;
         desktop_hook(c, "desktop_restore_argv")?;
@@ -1281,6 +1284,8 @@ mod tests {
             assert!(validate_config(&json!({"corners":corners})).is_ok());
         }
         assert!(validate_config(&json!({"corners":"round"})).is_err());
+        assert!(validate_config(&json!({"editor":{"ink":"#ffffff"}})).is_ok());
+        assert!(validate_config(&json!({"editor":"last"})).is_err());
         assert!(validate_config(&json!({"corners":true})).is_err());
         assert!(validate_config(&json!({"delay":3601})).is_err());
         assert!(validate_config(&default_config()).is_ok());
