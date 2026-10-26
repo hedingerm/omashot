@@ -653,6 +653,15 @@ Rectangle {
             next.push(bg);
         commit(next, "draw");
     }
+    // Zoom by factor while keeping the viewport point (px, py) over the same image pixel; the image sits centered with a 32 px margin.
+    function zoomAt(factor, px, py) {
+        var v = canvasScroll, s = v.imageScale, w = root.renderedWidth, h = root.renderedHeight;
+        var s2 = Math.max(.1, Math.min(4, s * factor));
+        var u = (v.contentX + px - Math.max((v.width - w * s) / 2, 32)) / s, t = (v.contentY + py - Math.max((v.height - h * s) / 2, 32)) / s;
+        root.zoom = s2;
+        v.contentX = Math.max(0, Math.min(v.contentWidth - v.width, u * s2 + Math.max((v.width - w * s2) / 2, 32) - px));
+        v.contentY = Math.max(0, Math.min(v.contentHeight - v.height, t * s2 + Math.max((v.height - h * s2) / 2, 32) - py));
+    }
     function undo() {
         if (!undoStack.length || busy)
             return;
@@ -1643,7 +1652,6 @@ Rectangle {
                                     anchors.fill: parent
                                     enabled: root.tool === "select" && !root.cropEditing && !root.textEditing && !root.busy
                                     visible: enabled
-                                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                                     cursorShape: panning ? Qt.ClosedHandCursor : root.selectedOperation ? Qt.SizeAllCursor : Qt.ArrowCursor
                                     property bool panning: false
                                     property point panStart
@@ -1652,7 +1660,7 @@ Rectangle {
                                     onPressed: function (e) {
                                         forceActiveFocus();
                                         var x = imageArea.sourceX + e.x / imageArea.sx, y = imageArea.sourceY + e.y / imageArea.sy;
-                                        var index = e.button === Qt.MiddleButton ? -1 : root.selectAt(x, y);
+                                        var index = root.selectAt(x, y);
                                         if (index >= 0)
                                             root.beginGesture(index, x, y);
                                         else {
@@ -1888,6 +1896,30 @@ Rectangle {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    // Ctrl+wheel zoom and middle-drag pan for every tool; handlers ignore other input, so tools below still get it.
+                    Item {
+                        anchors.fill: canvasScroll
+                        z: 50
+                        WheelHandler {
+                            acceptedModifiers: Qt.ControlModifier
+                            target: null
+                            onWheel: function (e) {
+                                root.zoomAt(Math.pow(1.25, e.angleDelta.y / 120), point.position.x, point.position.y);
+                            }
+                        }
+                        DragHandler {
+                            acceptedButtons: Qt.MiddleButton
+                            target: null
+                            cursorShape: Qt.ClosedHandCursor
+                            property point start
+                            onActiveChanged: if (active)
+                                start = Qt.point(canvasScroll.contentX, canvasScroll.contentY)
+                            onTranslationChanged: if (active) {
+                                canvasScroll.contentX = Math.max(0, Math.min(canvasScroll.contentWidth - canvasScroll.width, start.x - translation.x));
+                                canvasScroll.contentY = Math.max(0, Math.min(canvasScroll.contentHeight - canvasScroll.height, start.y - translation.y));
                             }
                         }
                     }

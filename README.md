@@ -200,6 +200,7 @@ You can also bind commands by hand in `~/.config/hypr/bindings.lua`, e.g. `o.bin
 
 - Use **Select** to move or resize marks; arrows have endpoint and curvature handles. Double-click text to edit it.
 - <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> undo and redo, <kbd>Delete</kbd> removes the selection, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves to history.
+- <kbd>Ctrl</kbd>+scroll zooms around the pointer; drag with the middle mouse button to pan the canvas with any tool.
 - Drag another image onto the canvas to combine captures.
 - Saved captures stay editable. Reopen them from history at any time.
 

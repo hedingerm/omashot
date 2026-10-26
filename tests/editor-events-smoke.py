@@ -43,6 +43,12 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:1100;implicitHeight:800
    edit.tool="filled";sx=surface.sx;sy=surface.sy
    mouseDrag(surface,10*sx,10*sy,40*sx,30*sy,Qt.LeftButton,Qt.NoModifier,100)
    require(edit.operations[edit.operations.length-1].type==="filled"&&Math.abs(edit.operations[edit.operations.length-1].x-10)<2,"Annotation pointer input remains usable after crop")
+   edit.tool="rectangle";var count=edit.operations.length
+   function at(x,y){return surface.mapToItem(edit,(x-surface.sourceX)*surface.sx,(y-surface.sourceY)*surface.sy)}
+   var p=at(300,200),scale=surface.sx;mouseWheel(edit,p.x,p.y,0,360,Qt.NoButton,Qt.ControlModifier);wait(50)
+   var q=at(300,200);require(Math.abs(surface.sx/scale-Math.pow(1.25,3))<.01,"Ctrl+wheel zooms");require(Math.abs(q.x-p.x)<1.5&&Math.abs(q.y-p.y)<1.5,"Ctrl+wheel keeps the pixel under the cursor")
+   mouseDrag(edit,q.x,q.y,-100,-60,Qt.MiddleButton,Qt.NoModifier,50);wait(50);var r=at(300,200)
+   require(Math.abs(r.x-q.x+100)<2&&Math.abs(r.y-q.y+60)<2,"Middle-drag pans the canvas with a drawing tool active");require(edit.operations.length===count,"Middle-drag does not draw")
    console.log("EVENTS_PASSED");Qt.quit()
   }
  }
@@ -50,4 +56,4 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:1100;implicitHeight:800
 } }''')
  result=subprocess.run(['qs','-p',str(harness)],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=50)
  assert result.returncode==0 and 'EVENTS_PASSED' in result.stdout and not any(x in result.stdout for x in ['FAIL!','EVENT_FAILURE=','EVENTS_TIMEOUT','ReferenceError','TypeError','ERROR:']),result.stdout
-print('PASS: actual mouse selection/move/curve/resize, inline text keyboard editing, delete/undo and crop handle input')
+print('PASS: actual mouse selection/move/curve/resize, inline text keyboard editing, delete/undo, crop handle input, Ctrl+wheel zoom and middle-drag pan')

@@ -24,7 +24,7 @@ Proven on Omarchy: Hyprland 0.56, Quickshell 0.3.2, ImageMagick 7.1, one 3840×2
 | Frame-pacing outliers during theme measurements | `omarchy theme set` itself causes 33–93 ms hitches; low battery/power-saving also skews | compare with a control run (same-theme set) and state confounders |
 | `theme-live` "starts with the shell palette, lag N" | gate is 25 ms; alone it measures 16–23 ms, 31 ms seen once while other heavy work ran | rerun alone; a repeat failure is a regression |
 | `isolated-window` color assert | channels vary by 1–2 levels between runs; the test allows ±3 | larger deviations are real |
-| `editor-latency` "interactions not measured" | virtual pointer/keyboard input didn't reach the editor (seen intermittently while the desktop was in use; passed on the next idle run) | rerun with the desktop idle; before 2026-10-25 this case passed vacuously with `{}` results |
+| `editor-latency` "interactions not measured" | virtual pointer/keyboard input didn't reach the editor (seen intermittently while the desktop was in use, and in `shell-latency` 6 s after `omarchy restart shell`; passed on the next run) | rerun with the desktop idle; before 2026-10-25 this case passed vacuously with `{}` results |
 | Latency gate failure followed by a parse traceback | the gate failure is real; the traceback is secondary | read the JSON results above it |
 
 ## Real-shell verification
