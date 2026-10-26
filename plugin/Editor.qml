@@ -1904,6 +1904,8 @@ Rectangle {
                         anchors.fill: canvasScroll
                         z: 50
                         WheelHandler {
+                            // Qt Wayland reports wl_pointer wheels as TouchPad, which the Mouse-only default rejects.
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                             acceptedModifiers: Qt.ControlModifier
                             target: null
                             onWheel: function (e) {

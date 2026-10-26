@@ -45,6 +45,8 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:1100;implicitHeight:800
    require(edit.operations[edit.operations.length-1].type==="filled"&&Math.abs(edit.operations[edit.operations.length-1].x-10)<2,"Annotation pointer input remains usable after crop")
    edit.tool="rectangle";var count=edit.operations.length
    function at(x,y){return surface.mapToItem(edit,(x-surface.sourceX)*surface.sx,(y-surface.sourceY)*surface.sy)}
+   function find(o){if(o&&o.acceptedModifiers===Qt.ControlModifier&&o.acceptedDevices!==undefined)return o;var d=o&&o.data||[];for(var i=0;i<d.length;i++){var f=find(d[i]);if(f)return f}return null}
+   var wheel=find(edit);require(wheel&&(wheel.acceptedDevices&PointerDevice.TouchPad),"Ctrl+wheel accepts Qt Wayland's TouchPad-typed wl_pointer")
    var p=at(300,200),scale=surface.sx;mouseWheel(edit,p.x,p.y,0,360,Qt.NoButton,Qt.ControlModifier);wait(50)
    var q=at(300,200);require(Math.abs(surface.sx/scale-Math.pow(1.25,3))<.01,"Ctrl+wheel zooms");require(Math.abs(q.x-p.x)<1.5&&Math.abs(q.y-p.y)<1.5,"Ctrl+wheel keeps the pixel under the cursor")
    mouseDrag(edit,q.x,q.y,-100,-60,Qt.MiddleButton,Qt.NoModifier,50);wait(50);var r=at(300,200)
