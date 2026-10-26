@@ -24,6 +24,8 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --locked
+      - name: Scrolling stitch test
+        run: cargo build --locked && python3 tests/scroll-stitch.py
       - name: Installer test
         run: bash tests/install.sh
       - name: Manifest and version consistency

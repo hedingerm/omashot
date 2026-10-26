@@ -195,7 +195,7 @@ Pick chords that aren't taken yet (replacing one requires `hl.unbind(...)`), the
 <details>
 <summary><b>Scrolling capture</b></summary>
 
-Select the scrolling part of the window and press Start, then scroll normally. Frames are stitched as you go and a preview grows beside the selection. Keep some overlap between scroll steps. Sticky headers and animations can confuse stitching, so a smaller selection usually helps. Horizontal mode handles side-scrolling content.
+Select the scrolling part of the window and press Start, then scroll normally. Frames are stitched as you go and a preview grows beside the selection; Done takes one last frame first. Keep some overlap between scroll steps, at least a line or two of content. If you scroll too far or back up, the capture waits and tells you, and continues once you scroll back to where it stopped. Sticky headers and animations can confuse stitching, so a smaller selection usually helps. Horizontal mode handles side-scrolling content.
 
 </details>
 
@@ -278,7 +278,7 @@ packaging/  desktop entry
 
 ## Known limitations
 
-- Scrolling capture follows your manual scrolling; it doesn't scroll the app for you.
+- Scrolling capture follows your manual scrolling; it doesn't scroll the app for you. Stitching only sees pixels, so long blank stretches can come out shorter, and a jump of more than a screenful inside a blank area can join unrelated parts.
 - Marks drawn before a crop, resize or rotation stay in the project, but you need to undo the transform to edit their handles.
 - No crop edge snapping or screen color picker yet.
 - OCR needs installed Tesseract language data.

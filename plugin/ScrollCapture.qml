@@ -27,6 +27,8 @@ Item {
     property string message: ""
     property string pending: ""
     property bool takingFrame: false
+    // Done samples once more, so scrolling since the last periodic frame isn't lost.
+    property bool finalSample: false
     readonly property real localX: region.x - (output ? output.x : 0)
     readonly property real localY: region.y - (output ? output.y : 0)
     readonly property bool controlsBelow: localY + region.h + 58 < (output ? output.height : 1000)
@@ -58,6 +60,7 @@ Item {
         }) || Quickshell.screens[0];
         active = true;
         polling = false;
+        finalSample = false;
         previewPath = "";
         previewRevision = 0;
         pending = "";
@@ -75,6 +78,7 @@ Item {
     function requestFinish() {
         if (!active)
             return;
+        finalSample = polling && !prepareSample.running;
         polling = false;
         pending = "finish";
         drain();
@@ -82,6 +86,7 @@ Item {
     function requestCancel() {
         if (!active)
             return;
+        finalSample = false;
         polling = false;
         pending = "cancel";
         drain();
@@ -89,6 +94,12 @@ Item {
     function drain() {
         if (!active || worker.running || prepareSample.running)
             return;
+        if (finalSample) {
+            finalSample = false;
+            takingFrame = true;
+            prepareSample.start();
+            return;
+        }
         if (pending) {
             let operation = pending;
             pending = "";
@@ -113,7 +124,7 @@ Item {
         id: prepareSample
         interval: 90
         onTriggered: {
-            if (root.pending) {
+            if (root.pending === "cancel") {
                 root.takingFrame = false;
                 root.drain();
                 return;

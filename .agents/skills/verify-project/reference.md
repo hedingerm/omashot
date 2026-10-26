@@ -4,7 +4,7 @@ Details behind [SKILL.md](SKILL.md). Paths are relative to the repository root.
 
 ## Environment
 
-Proven on Omarchy: Hyprland 0.56, Quickshell 0.3.2, ImageMagick 7.1, one 3840×2160 monitor at scale 1.6. Untested: multiple monitors, other scales/transforms, non-English OCR data. CI (`.github/workflows/ci.yml`, Arch container) runs only the static checks plus `install`; everything headless/live is local only.
+Proven on Omarchy: Hyprland 0.56, Quickshell 0.3.2, ImageMagick 7.1, one 3840×2160 monitor at scale 1.6. Untested: multiple monitors, other scales/transforms, non-English OCR data. CI (`.github/workflows/ci.yml`, Arch container) runs only the static checks plus `install` and `scroll-stitch`; everything else headless/live is local only.
 
 - Static/headless: `cargo`, `jq`, `python3` (stdlib only), `magick`, `qs` (offscreen Qt via `QT_QPA_PLATFORM=offscreen`, set by the tests), `omarchy` for `plugin-validate`.
 - Live: a Hyprland session (`WAYLAND_DISPLAY`, `HYPRLAND_INSTANCE_SIGNATURE`) plus `grim`, `wl-paste`, `wl-copy`, `qrencode`, `zbarimg`, `tesseract` (English data), `hyprctl`. `./scripts/doctor.sh` checks runtime dependencies.
@@ -49,6 +49,7 @@ Use when the claim is about how the installed app behaves or feels. The real oma
 
 - **Product bug:** `capture repeat` after a frozen area capture (the default) fails with `No such file or directory`, or repeats a stale area, because `capture-frozen` doesn't write `.last-selection`. Reproduced 2026-10-25 at a6d16b6: `omashot snapshot`, `omashot capture-frozen <path> '0,0 100x80'`, `omashot capture repeat`.
 - **Product bug (from the 2026-10-25 audit, not re-run since):** a failed direct QR/OCR recognition returns early in `plugin/Main.qml` before its cleanup, leaving the temporary capture in history.
+- `ScrollCapture.qml` timing (final frame on Done, Cancel during a frame) has no repository check; `scroll-smoke` drives the backend only. Stitching ambiguity that no pixel matcher can resolve (blank stretches, jumps of more than a screenful in blank areas) is listed in README Known limitations.
 - Live pixelate/blur previews sample only the base image; a background before a pending transform falls back to the exact render.
 - Multi-monitor, other scales, non-English OCR, drag-and-drop into other apps: manual only.
 - `editor-latency` thresholds were measured on this machine; another machine may need a different `--max-ms`.
