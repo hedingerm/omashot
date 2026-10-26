@@ -78,6 +78,7 @@ pub fn cleanup(dir: &Path, days: u64, now: u64) -> Result<usize> {
             ".preview-",
             ".render-",
             ".scroll-frame-",
+            ".scroll-last-",
             ".scroll-",
             ".frozen-",
         ]
@@ -239,6 +240,7 @@ mod tests {
         old(&d.join(".preview-125-4.png"), 86400, now);
         old(&d.join(".scroll-126-4.json"), 86400, now);
         old(&d.join(".scroll-126-4.png"), 86400, now);
+        old(&d.join(".scroll-last-126-4.png"), 86400, now);
         cleanup(&d, 1, now).unwrap();
         assert!(!d.join("capture-123-4.png").exists());
         assert!(!d.join("capture-123-4.project.json").exists());
@@ -248,6 +250,7 @@ mod tests {
         assert!(!d.join(".preview-125-4.png").exists());
         assert!(!d.join(".scroll-126-4.json").exists());
         assert!(!d.join(".scroll-126-4.png").exists());
+        assert!(!d.join(".scroll-last-126-4.png").exists());
         fs::remove_dir_all(d).unwrap();
     }
     #[test]

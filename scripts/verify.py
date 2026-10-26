@@ -29,6 +29,7 @@ CHECKS={
  'render-regression':('headless',py('render-regression'),['magick'],['debug'],300),
  'render-golden':('headless',py('render-golden'),['magick'],['debug'],300),
  'history-service':('headless',py('history-service'),['magick'],['debug'],120),
+ 'scroll-stitch':('headless',py('scroll-stitch'),[],['debug'],120),
  'editor-events':('headless',py('editor-events-smoke'),['qs'],['debug'],180),
  'editor-objects':('headless',py('editor-objects-smoke'),['qs'],['debug'],180),
  'editor-narrow':('headless',py('editor-narrow-smoke'),['qs'],['debug'],120),
