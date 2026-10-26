@@ -3,7 +3,7 @@ set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 test_home=$(mktemp -d)
 trap 'rm -rf -- "$test_home"' EXIT
-export HOME="$test_home" XDG_DATA_HOME="$test_home/.local/share"
+export HOME="$test_home" XDG_DATA_HOME="$test_home/.local/share" XDG_CONFIG_HOME="$test_home/.config"
 mkdir -p "$HOME/.config/omarchy"
 cat > "$HOME/.config/omarchy/shell.json" <<'JSON'
 {"version":1,"idle":{"lock":987},"bar":{"position":"bottom","layout":{"right":[{"id":"omarchy.audio"}]}},"plugins":[{"id":"example.other","setting":42}]}

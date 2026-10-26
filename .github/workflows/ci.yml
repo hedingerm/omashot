@@ -36,5 +36,7 @@ jobs:
           cargo_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           manifest_version=$(jq -r .version plugin/manifest.json)
           test "$cargo_version" = "$manifest_version" || { echo "Cargo.toml ($cargo_version) and manifest.json ($manifest_version) versions differ"; exit 1; }
+      - name: Verification runner regression test
+        run: python3 tests/verify-runner.py
       - name: Python syntax
         run: python3 -m py_compile scripts/*.py tests/*.py

@@ -77,7 +77,8 @@ Item {
             return false;
         }
         job = purpose || args[0];
-        status = "Working…";
+        if (purpose !== "post-recognition-cleanup")
+            status = "Working…";
         worker.command = [backend].concat(args);
         worker.running = true;
         return true;

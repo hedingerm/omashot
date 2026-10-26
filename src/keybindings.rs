@@ -4,14 +4,17 @@ use crate::{Result, err, run, strings};
 use serde_json::{Map, Value, json};
 use std::{env, fs, path::PathBuf};
 
-pub const ACTIONS: [(&str, &str); 9] = [
+pub const ACTIONS: [(&str, &str); 12] = [
     ("open", "OmaShot launcher"),
     ("region", "OmaShot area"),
     ("window", "OmaShot window"),
     ("active", "OmaShot active window"),
     ("fullscreen", "OmaShot fullscreen"),
     ("repeat", "OmaShot repeat area"),
+    ("scroll", "OmaShot scrolling capture"),
     ("history", "OmaShot history"),
+    ("preferences", "OmaShot preferences"),
+    ("text", "OmaShot text or QR code"),
     ("ocr", "OmaShot text recognition"),
     ("qr", "OmaShot QR code"),
 ];
@@ -94,7 +97,23 @@ fn read_state() -> Value {
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({"bindings":{},"replaced":{}}))
 }
-// Every global bind Hyprland currently has, as canonical chords, without OmaShot's own.
+// Lua dispatchers expose only a callback id. Our generated descriptions identify their action;
+// native exec binds still expose the command, including manually configured launcher bindings.
+fn action(bind: &Value) -> Option<&'static str> {
+    let command = bind["command"].as_str().unwrap_or("");
+    ACTIONS.iter().find_map(|(id, label)| {
+        let lua = command
+            .strip_prefix("__lua ")
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+        let native = command.starts_with("exec ")
+            && (command.ends_with(&format!("omashot-ui {id}"))
+                || (id == &"open" && command.ends_with("omashot-ui"))
+                || command.ends_with(&format!("omarchy-shell omashot capture {id}"))
+                || command.ends_with(&format!("omarchy-shell omashot {id}")));
+        (native || (lua && bind["description"].as_str() == Some(label))).then_some(*id)
+    })
+}
+// Every global bind Hyprland currently has, as canonical chords.
 fn hypr_binds() -> Option<Vec<Value>> {
     let binds: Value =
         serde_json::from_str(&run("hyprctl", &strings(&["-j", "binds"])).ok()?).ok()?;
@@ -144,6 +163,7 @@ fn status() -> Value {
         "bindings": state["bindings"],
         "replaced": state["replaced"],
         "taken": [],
+        "active": {},
         "hyprland": false,
         "file": hypr_bindings(),
     });
@@ -155,10 +175,17 @@ fn status() -> Value {
     }
     if let Some(binds) = hypr_binds() {
         v["hyprland"] = json!(true);
+        let mut active = Map::new();
+        for bind in &binds {
+            if let Some(id) = action(bind) {
+                active.entry(id).or_insert_with(|| bind["keys"].clone());
+            }
+        }
+        v["active"] = json!(active);
         v["taken"] = json!(
             binds
                 .into_iter()
-                .filter(|b| !b["command"].as_str().unwrap_or("").contains("omashot-ui"))
+                .filter(|b| action(b).is_none())
                 .collect::<Vec<_>>()
         );
     }
@@ -321,10 +348,7 @@ pub fn command(a: &[String]) -> Result<Value> {
                             same(
                                 b["keys"].as_str().unwrap_or(""),
                                 keys.as_str().unwrap_or(""),
-                            ) && b["command"]
-                                .as_str()
-                                .unwrap_or("")
-                                .ends_with(&format!("omashot-ui {id}"))
+                            ) && action(b) == Some(id.as_str())
                         })
                     })
                     .map(|(id, _)| id)

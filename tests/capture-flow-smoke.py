@@ -8,6 +8,13 @@ BIN=ROOT/'target/release/omashot'
 with tempfile.TemporaryDirectory(prefix='omashot-capture-flow-') as td:
     td=pathlib.Path(td);plugin=td/'plugin';shutil.copytree(ROOT/'plugin',plugin)
     env=dict(os.environ,OMASHOT_BACKEND=str(BIN),XDG_CONFIG_HOME=str(td/'config'),XDG_DATA_HOME=str(td/'data'))
+    failure=td/'recognition-failure'
+    wrapper=td/'backend'
+    message=json.dumps({'error':'Recognition failed sentinel'})
+    wrapper.write_text('#!/usr/bin/env python3\nimport os,pathlib,sys\n'
+        +f'if sys.argv[1:2]==["recognize"] and pathlib.Path({str(failure)!r}).exists(): print({message!r});sys.exit(1)\n'
+        +f'os.execv({str(BIN)!r},[{str(BIN)!r},*sys.argv[1:]])\n')
+    wrapper.chmod(0o755);env['OMASHOT_BACKEND']=str(wrapper)
     exports=td/'exports';exports.mkdir()
     def backend(*args):return json.loads(subprocess.check_output([str(BIN),*map(str,args)],env=env,text=True))
     backend('config',json.dumps({'retention_days':0,'show_overlay':True,'copy_after_capture':True,'save_after_capture':True,'pin_after_capture':True,'export_directory':str(exports),'overlay_size':160}))
@@ -111,6 +118,13 @@ ShellRoot {
             ipc('captureverify','capture','region');wait(lambda s:s['selecting']);ipc('captureverify','cancelSelection')
             wait(lambda s:not s['selecting'] and s['status']=='Done');time.sleep(.3)
             assert not list((td/'data/omashot').glob('.frozen-*.png'))
+            # Failed recognition discards only its temporary capture and keeps the error after cleanup.
+            failure.touch();ipc('captureverify','capture','text');wait(lambda s:s['selecting'])
+            ipc('captureverify','select',text_geometry)
+            wait(lambda s:s['opened'] and s['status']=='Recognition failed sentinel' and len(backend('history'))==2)
+            time.sleep(.3);assert status()['status']=='Recognition failed sentinel',status()
+            assert not list((td/'data/omashot').glob('.frozen-*.png'))
+            failure.unlink();ipc('omashot','dismiss')
             # Continuous capture samples without reopening Main or requiring Add frame clicks.
             geometry=f'{x+40},{y+40} {min(500,w-80)}x{min(400,h-80)}'
             ipc('captureverify','scrolling','');wait(lambda s:s['selecting']);ipc('captureverify','select',geometry);wait(lambda s:s['scrollActive'])
@@ -119,7 +133,9 @@ ShellRoot {
             ipc('captureverify','offset',100)
             grown=wait(lambda s:s['scrollHeight']>initial['scrollHeight'] and s['scrollPreviewReady'])
             assert not grown['opened']
+            ipc('captureverify','offset',180)
             ipc('captureverify','finish');finished=wait(lambda s:not s['scrollActive'] and s['quickCount']==2 and s['status']=='Done')
+            assert finished['scrollHeight']>grown['scrollHeight'],(grown,finished)
             assert len(backend('history'))==3
             assert not list((td/'data/omashot').glob('.scroll-*.json'))
             # Cancel a second in-place session without committing a capture.

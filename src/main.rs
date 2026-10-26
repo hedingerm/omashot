@@ -1237,21 +1237,22 @@ fn dispatch(a: &[String]) -> Result<Value> {
         "project" => {
             let p = checked(argument(a, 1)?)?;
             if p.with_extension("project.json").exists() {
-                let project: Value =
+                let mut project: Value =
                     serde_json::from_slice(&fs::read(p.with_extension("project.json"))?)?;
                 if project["source"]
                     .as_str()
                     .and_then(|s| checked(s).ok())
                     .is_some()
                 {
+                    project["saved"] = json!(true);
                     Ok(project)
                 } else {
                     Ok(
-                        json!({"source":p,"operations":[],"warning":"Original project source missing; restored flattened image"}),
+                        json!({"source":p,"operations":[],"saved":true,"warning":"Original project source missing; restored flattened image"}),
                     )
                 }
             } else {
-                Ok(json!({"source":p,"operations":[]}))
+                Ok(json!({"source":p,"operations":[],"saved":false}))
             }
         }
         "config" => {

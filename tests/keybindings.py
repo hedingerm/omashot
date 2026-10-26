@@ -18,7 +18,7 @@ if sys.argv[1:]==['reload']:
             a=re.findall(r'"([^"]*)"',args); *mods,key=a[0].split(' + ')
             mask=sum({'SUPER':64,'CTRL':4,'ALT':8,'SHIFT':1}[m] for m in mods)
             binds=[b for b in binds if not (b['modmask']==mask and b['key'].upper()==key.upper())]
-            if kind=='o.bind': binds.append({'modmask':mask,'key':key,'description':a[1],'dispatcher':'exec','arg':a[2]})
+            if kind=='o.bind': binds.append({'modmask':mask,'key':key,'description':a[1],'dispatcher':'__lua','arg':str(len(binds)+1)})
     json.dump(binds,open(state,'w')); open(state+'.log','a').write('reload\n')
 elif sys.argv[1:]==['-j','binds']:
     print(open(state).read() if os.path.exists(state) else json.dumps(defaults))
@@ -43,6 +43,7 @@ with tempfile.TemporaryDirectory(prefix='omashot-bindings-test-') as td:
     assert not (td/'config/omashot/hyprland-bindings.lua').exists() and user.read_text()==original
     v=command('bindings','set','{"region":"super + shift + s","history":"SUPER + S","ocr":""}')
     assert v['bindings']=={'region':'SUPER + SHIFT + S','history':'SUPER + S'},v
+    assert v['active']==v['bindings'],v
     assert v['replaced']=={'history':'Screenshot'} and v['missing']==[] and v['reloaded'] and v['installed'],v
     text=user.read_text(); assert text.startswith(original) and text.count('-- BEGIN OMASHOT')==1,text
     lua=(td/'config/omashot/hyprland-bindings.lua').read_text()
@@ -51,6 +52,12 @@ with tempfile.TemporaryDirectory(prefix='omashot-bindings-test-') as td:
     # Saving again keeps one block and remembers what an already replaced chord replaced.
     v=command('bindings','set','{"history":"SUPER + S","qr":"Print"}')
     assert v['replaced']=={'history':'Screenshot','qr':'Screenshot'} and user.read_text().count('-- BEGIN OMASHOT')==1,v
+    # A different callback on the same chord is not one of our registered shortcuts.
+    fake.write_text(FAKE.replace("'description':a[1]", "'description':'Another app'"))
+    assert command('bindings','set','{"region":"SUPER + ALT + S"}')['missing']==['region']
+    fake.write_text(FAKE)
+    v=command('bindings','set','{"text":"SUPER + ALT + T","scroll":"SUPER + ALT + C","preferences":"SUPER + ALT + P"}')
+    assert v['active']==v['bindings'] and not v['missing'],v
     # Bindings Hyprland did not register are reported instead of claimed.
     fake.write_text(FAKE.replace("json.dump(binds","binds=defaults;json.dump(binds"))
     assert command('bindings','set','{"region":"SUPER + ALT + S"}')['missing']==['region']

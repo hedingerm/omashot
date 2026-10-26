@@ -19,13 +19,13 @@ BarWidget {
         { mode: "fullscreen", icon: "screen", text: "Capture full screen" },
         { mode: "repeat", icon: "reset", text: "Repeat last area" },
         { mode: "scroll", icon: "resize", text: "Scrolling capture" },
-        { mode: "ocr", icon: "ocr", text: "Capture text" },
-        { mode: "qr", icon: "qr", text: "Read QR from screen" },
+        { mode: "text", icon: "ocr", text: "Copy text or QR code" },
         { separator: true },
         { mode: "open", icon: "expand", text: "Open OmaShot" },
         { mode: "history", icon: "history", text: "History and editor" },
         { mode: "preferences", icon: "settings", text: "Preferences" }
     ]
+    readonly property string backend: Quickshell.env("OMASHOT_BACKEND") || (Quickshell.env("HOME") + "/.local/bin/omashot")
     property var hotkeys: ({})
     property string pendingMode: ""
 
@@ -42,23 +42,15 @@ BarWidget {
         pendingMode = mode;
         launchTimer.restart();
     }
-    // Hyprland modmask bits: SHIFT 1, CTRL 4, ALT 8, SUPER 64.
-    function chord(bind) {
-        let mods = [[64, "Super"], [4, "Ctrl"], [8, "Alt"], [1, "Shift"]].filter(m => bind.modmask & m[0]).map(m => m[1]);
-        let key = String(bind.key || "");
-        return mods.concat([key.length === 1 ? key.toUpperCase() : key]).join("+");
+    function refreshHotkeys() {
+        binds.running = true;
     }
     function readHotkeys(text) {
-        let found = {};
         try {
-            for (const bind of JSON.parse(text)) {
-                let arg = String(bind.arg || ""), m = arg.match(/\bomashot-ui(?:\s+([a-z]+))?\s*$/) || arg.match(/\bomarchy-shell\s+omashot\s+(?:capture\s+)?([a-z]+)\s*$/);
-                let mode = m ? (m[1] || "open") : "";
-                if (mode && !found[mode] && bind.key)
-                    found[mode] = chord(bind);
-            }
-        } catch (error) {}
-        hotkeys = found;
+            hotkeys = JSON.parse(text).active || {};
+        } catch (error) {
+            hotkeys = {};
+        }
     }
 
     Timer {
@@ -69,7 +61,7 @@ BarWidget {
     // Read on every open rather than polling: bindings change only when the user edits them.
     Process {
         id: binds
-        command: ["hyprctl", "binds", "-j"]
+        command: [root.backend, "bindings"]
         stdout: StdioCollector {
             onStreamFinished: root.readHotkeys(text)
         }
@@ -90,7 +82,7 @@ BarWidget {
         onPressed: function (b) {
             if (b === Qt.RightButton) {
                 if (!menu.open)
-                    binds.running = true;
+                    root.refreshHotkeys();
                 menu.open = !menu.open;
             } else
                 root.run(b === Qt.MiddleButton ? "region" : "open");
@@ -155,7 +147,7 @@ BarWidget {
                     Text {
                         id: shortcut
                         visible: !row.modelData.separator
-                        text: root.hotkeys[row.modelData.mode] || ""
+                        text: (root.hotkeys[row.modelData.mode] || "").replace(/\s*\+\s*/g, "+")
                         color: Commons.Color.popups.text
                         opacity: 0.6
                         font.family: Style.font.family

@@ -717,7 +717,7 @@ Rectangle {
                 try {
                     var project = JSON.parse(root.projectOutput);
                     if (project.source && Array.isArray(project.operations)) {
-                        restored = true;
+                        restored = project.saved === true || project.operations.length > 0;
                         root.basePath = project.source;
                         root.operations = project.operations;
                         root.undone = [];

@@ -165,7 +165,7 @@ Open the launcher with `omashot-ui`, or go straight to a mode:
 
 OmaShot runs inside the Omarchy shell, which Hyprland starts at login, so there is nothing extra to autostart. Retention cleanup runs in the background from the start; the launcher loads on first use and stays loaded.
 
-The installer adds an OmaShot icon to the right side of the Omarchy bar once. Left-click opens the launcher, middle-click captures an area, and right-click opens a menu with every capture mode, history and editor, and Preferences. The menu shows the Hyprland binding next to each entry that has one. If you remove the icon, updates leave it out. To bring it back, run `omarchy-shell shell putBarWidget omashot '{"section":"right"}'`. Removing the icon does not stop OmaShot.
+The installer adds an OmaShot icon to the right side of the Omarchy bar once. Left-click opens the launcher, middle-click captures an area, and right-click opens a menu with every capture mode, history and editor, and Preferences. The menu shows registered OmaShot shortcuts next to their actions, including shortcuts saved in Preferences. If you remove the icon, updates leave it out. To bring it back, run `omarchy-shell shell putBarWidget omashot '{"section":"right"}'`. Removing the icon does not stop OmaShot.
 
 ### Keybindings
 

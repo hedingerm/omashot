@@ -7,6 +7,8 @@ with tempfile.TemporaryDirectory(prefix='omashot-render-test-') as directory:
  def run(*args):return json.loads(subprocess.check_output([str(binary),*map(str,args)],env=env,text=True))
  def pixel(path,x,y):return subprocess.check_output(['magick',str(path),'-format',f'%[pixel:p{{{x},{y}}}]','info:'],text=True).strip()
  source=d/'source.png';subprocess.run(['magick','-size','100x100','xc:white',str(source)],check=True)
+ assert run('project',source)['saved'] is False
+ empty=run('render',source,'[]','-');assert run('project',empty['path'])['saved'] is True
  result=run('render',source,json.dumps([{'type':'arrow','x':10,'y':80,'cx':50,'cy':0,'x2':90,'y2':80,'color':'#ff0000','width':4}]),'-')
  assert pixel(result['path'],50,40) not in ['srgba(255,255,255,1)','srgb(255,255,255)']
  assert pixel(result['path'],50,80) in ['srgba(255,255,255,1)','srgb(255,255,255)']

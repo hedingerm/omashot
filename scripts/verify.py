@@ -25,6 +25,7 @@ CHECKS={
  'manifest':('static',['sh','-c','jq -e \'.id == "omashot" and (.entryPoints.overlay | length > 0)\' plugin/manifest.json >/dev/null && c=$(cargo metadata --no-deps --format-version 1 | jq -r ".packages[0].version") && m=$(jq -r .version plugin/manifest.json) && echo "Cargo $c manifest $m" && test "$c" = "$m"'],['jq'],[],60),
  'qmldir':('static',['sh','-c','cd plugin && for f in *.qml; do case $f in BarWidget.qml|ShellPalette.qml|shell.qml|WindowCapture.qml) continue;; esac; grep -q " $f$" qmldir || { echo "$f missing from plugin/qmldir"; exit 1; }; done; echo all listed'],[],[],10),
  'plugin-validate':('static',['omarchy','plugin','validate','./plugin'],['omarchy'],[],60),
+ 'verify-runner':('headless',py('verify-runner'),[],[],60),
  'install':('headless',['bash','tests/install.sh'],[],[],120),
  'render-regression':('headless',py('render-regression'),['magick'],['debug'],300),
  'render-golden':('headless',py('render-golden'),['magick'],['debug'],300),
@@ -37,11 +38,12 @@ CHECKS={
  'editor-background':('headless',py('editor-background-smoke'),['qs','magick'],['release'],180),
  'editor-live':('headless',py('editor-live-smoke'),['qs'],['debug'],180),
  'theme-smoke':('headless',py('theme-smoke'),['qs'],[],120),
- 'render-identity':('identity',py('render-identity'),['magick','git'],['release'],900),
+ 'render-identity':('identity',py('render-identity','-j','4'),['magick','git'],['release'],900),
  'ui-smoke':('live',py('ui-smoke'),['wayland','qs','magick'],['debug'],300),
  'capture-selector':('live',py('capture-selector-smoke'),['wayland','qs','magick'],['release'],180),
  'capture-flow':('live',py('capture-flow-smoke'),['wayland','qs','magick'],['release'],300),
  'isolated-window':('live',py('isolated-window-smoke'),['wayland','qs','magick'],['debug'],120),
+ 'keybindings-live':('live',py('keybindings-live'),['wayland','qs','Hyprland'],['debug'],120),
  'scroll':('live',py('scroll-smoke'),['wayland','qs','magick'],['release'],180),
  'theme-live':('live',py('theme-live-smoke'),['wayland','qs'],['debug'],180),
  'live-scene-fidelity':('live',py('live-scene-fidelity'),['wayland','qs','magick'],['debug'],300),
@@ -174,6 +176,8 @@ def kill(p):
  except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait()
  except ProcessLookupError:pass
 def run(cmd,log,timeout,env=None):
+ # Bound each ImageMagick process: nested test pools otherwise multiply its CPU-wide thread pool.
+ env=dict(os.environ,**(env or {}));env.setdefault('MAGICK_THREAD_LIMIT','1')
  # Output goes to a file, never a pipe: a wl-copy daemon spawned by a test would inherit the pipe and hang the run.
  with log.open('wb') as out:
   p=subprocess.Popen(cmd,cwd=root,env=env,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,start_new_session=True);RUNNING.add(p)
@@ -182,12 +186,15 @@ def run(cmd,log,timeout,env=None):
   finally:RUNNING.discard(p)
 def main(argv):
  flags={a for a in argv if a.startswith('--')};names=[a for a in argv if not a.startswith('-')]
- base=argv[argv.index('--base')+1] if '--base' in argv else None
- if base:names.remove(base)
- opt=lambda f,d:int(argv[argv.index(f)+1]) if f in argv else d
- jobs,sessions=opt('--jobs',min(os.cpu_count() or 4,8)),opt('--sessions',3)
- for f in ('--jobs','--sessions'):
-  if f in argv:names.remove(argv[argv.index(f)+1])
+ try:
+  base=argv[argv.index('--base')+1] if '--base' in argv else None
+  if base:names.remove(base)
+  opt=lambda f,d:int(argv[argv.index(f)+1]) if f in argv else d
+  jobs,sessions=opt('--jobs',min(os.cpu_count() or 4,8)),opt('--sessions',3)
+  for f in ('--jobs','--sessions'):
+   if f in argv:names.remove(argv[argv.index(f)+1])
+  if jobs<1 or sessions<1:raise ValueError('--jobs and --sessions must be positive integers')
+ except (IndexError,ValueError) as e:print(f'Invalid option: {e}');return 2
  unknown=flags-{'--full','--shell','--no-live','--keep','--why','--list','--base','--help','--serial','--desktop','--jobs','--sessions'}
  if '--help' in flags or '-h' in argv or unknown:print(__doc__+(f'\nUnknown option(s): {", ".join(sorted(unknown))}' if unknown else ''));return 2 if unknown else 0
  if '--list' in flags:
@@ -230,9 +237,10 @@ def main(argv):
    tail=[l for l in log.read_text(errors='replace').splitlines() if l.strip()][-1:] if log.exists() else []
    r=(c,'PASS' if code==0 else 'FAIL',time.monotonic()-t,'' if code==0 else (f'{code}: ' if code=='timeout' else f'exit {code}: ')+(tail[0][:160] if tail else ''))
   report(r)
+ for c in skipped:report((c,'SKIP',0,'--no-live'))
  runnable=[c for c in selected if c not in skipped]
- live=[c for c in runnable if CHECKS[c][0]=='live' and c not in TIMED];timed=[c for c in selected if c in TIMED]
- shells=[c for c in selected if CHECKS[c][0]=='shell' and c not in TIMED];offscreen=[c for c in selected if CHECKS[c][0] not in ('live','shell')]
+ live=[c for c in runnable if CHECKS[c][0]=='live' and c not in TIMED];timed=[c for c in runnable if c in TIMED]
+ shells=[c for c in runnable if CHECKS[c][0]=='shell' and c not in TIMED];offscreen=[c for c in runnable if CHECKS[c][0] not in ('live','shell')]
  # Each nested Hyprland has its own focus, pointer and clipboard, so live checks run in parallel, one per session.
  nested=[];want=max(min(sessions,len(live)),1 if any(CHECKS[c][0]=='live' for c in runnable) else 0)
  if '--desktop' not in flags and want and not missing(['wayland']) and shutil.which('Hyprland'):nested=[Nested(logs/f'nested-{i}') for i in range(want)]
@@ -263,7 +271,7 @@ def main(argv):
    # once; the timing gates run afterwards, alone, so load can't skew them.
    cargo=[c for c in offscreen if c in CARGO];rest=sorted([c for c in offscreen if c not in CARGO],key=lambda c:-CHECKS[c][4])
    lanes=[(build,b) for b in builds]+([(lane,cargo)] if cargo else [])+[(worker,n) for n in nested]+([(lane,live+shells)] if live and not nested else [(lane,shells)] if shells else [])
-   with cf.ThreadPoolExecutor(len(lanes)) as ex,cf.ThreadPoolExecutor(jobs) as pool:
+   with cf.ThreadPoolExecutor(max(1,len(lanes))) as ex,cf.ThreadPoolExecutor(jobs) as pool:
     futures=[ex.submit(*l) for l in lanes]+[pool.submit(check,c) for c in rest]
     try:
      for f in futures:f.result()
@@ -279,7 +287,7 @@ def main(argv):
  if shell_before and shell_instance()!=shell_before:
   results.append(('shell-stable','FAIL',0,f'omarchy-shell restarted during the run ({shell_before} -> {shell_instance()}); another session? rerun'));print(f'FAIL    shell-stable          {results[-1][3]}')
  counts={s:sum(r[1]==s for r in results) for s in ['PASS','FAIL','BLOCKED','SKIP']}
- ok=counts['PASS']==len(results)
+ ok=counts['PASS']==len(results) and set(selected)<={r[0] for r in results}
  (logs/'summary.json').write_text(json.dumps({'scope':scope,'head':git('rev-parse','--short','HEAD').strip(),'results':[dict(zip(['check','status','seconds','detail'],r)) for r in results]},indent=1))
  print(f'\n{"PASS" if ok else "NOT PASSED"}: '+', '.join(f'{v} {k.lower()}' for k,v in counts.items() if v)+f' ({scope} scope)')
  if ok and scope!='full':print('This is a selected subset, not full verification.')
