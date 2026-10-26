@@ -41,6 +41,12 @@ Item {
     property bool preferencesLoaded: false
     property var captureSnapshot: null
     property string recognitionPath: ""
+    // Direct recognition capture modes and the backend command each runs; "ocr"/"qr" stay for existing keybindings.
+    readonly property var recognizers: ({
+            "text": "recognize",
+            "ocr": "ocr",
+            "qr": "qr"
+        })
     Binding {
         target: Theme
         property: "corners"
@@ -265,8 +271,13 @@ Item {
             beginScrolling(geometry);
             return;
         }
-        root.run(["capture-frozen", captureSnapshot.path, geometry], mode === "ocr" || mode === "qr" ? "recognition-capture" : "capture");
+        root.run(["capture-frozen", captureSnapshot.path, geometry], root.recognizers[mode] ? "recognition-capture" : "capture");
         captureSnapshot = null;
+    }
+    function discardRecognition() {
+        if (recognitionPath)
+            queueCaptureAction(["delete", recognitionPath], "post-recognition-cleanup");
+        recognitionPath = "";
     }
     function cancelFrozenSelection() {
         selector.opened = false;
@@ -307,7 +318,7 @@ Item {
             root.opened = false;
             root.quickOpened = false;
             root.capturing = true;
-            if ((root.pendingMode === "region" && root.preferences.freeze_capture !== false) || root.pendingMode === "ocr" || root.pendingMode === "qr" || root.pendingMode === "scroll") {
+            if ((root.pendingMode === "region" && root.preferences.freeze_capture !== false) || root.recognizers[root.pendingMode] || root.pendingMode === "scroll") {
                 root.run(["snapshot", "--delay", String(root.delay)].concat(root.cursor ? ["--cursor"] : []), "snapshot");
             } else
                 root.run(["capture", root.pendingMode, "--delay", String(root.delay)].concat(root.cursor ? ["--cursor"] : []), "capture");
@@ -343,11 +354,17 @@ Item {
             if (code !== 0 || data.error) {
                 if (root.job === "snapshot")
                     root.capturing = false;
+                if (root.job.startsWith("direct-")) {
+                    root.capturing = false;
+                    root.discardRecognition();
+                }
                 root.status = data.error || err;
                 root.opened = true;
                 return;
             }
-            root.status = "Done";
+            // Background cleanup after a failed recognition must not replace its error.
+            if (root.job !== "post-recognition-cleanup")
+                root.status = "Done";
             if (root.captureActionQueue.length)
                 captureActionTimer.restart();
             if (root.job === "post-quick-copy")
@@ -366,19 +383,19 @@ Item {
             }
             if (root.job === "recognition-capture") {
                 root.recognitionPath = data.path;
-                let kind = root.pendingMode;
+                let command = root.recognizers[root.pendingMode];
                 Qt.callLater(function () {
-                    root.run([kind, data.path], "direct-" + kind);
+                    root.run([command, data.path], "direct-" + command);
                 });
                 return;
             }
-            if (root.job === "direct-ocr" || root.job === "direct-qr") {
+            if (root.job.startsWith("direct-")) {
                 root.capturing = false;
                 root.opened = false;
                 root.quickOpened = !!root.quickCaptures.length;
-                root.queueCaptureAction(["delete", root.recognitionPath], "post-recognition-cleanup");
-                root.recognitionPath = "";
-                Quickshell.execDetached(["notify-send", "--expire-time=1800", "OmaShot", root.job === "direct-qr" ? "QR code copied to clipboard" : data.text ? "Text copied to clipboard" : "No text found"]);
+                root.discardRecognition();
+                let kind = data.kind || (root.job === "direct-qr" ? "qr" : data.text ? "text" : "none");
+                Quickshell.execDetached(["notify-send", "--expire-time=1800", "OmaShot", kind === "qr" ? "QR code copied to clipboard" : kind === "text" ? "Text copied to clipboard" : "No text or QR code found"]);
                 return;
             }
             if (root.job === "capture-config") {
@@ -434,8 +451,8 @@ Item {
                 prefWindowTransparent.checked = !!data.window_transparent;
                 prefCorners.currentIndex = Math.max(0, ["auto", "square", "rounded"].indexOf(data.corners || "auto"));
                 settings.open();
-            } else if (root.job === "ocr" || root.job === "qr") {
-                outputText.text = data.text || data.value || JSON.stringify(data);
+            } else if (root.job === "recognize") {
+                outputText.text = data.text || "No text or QR code found";
                 output.open();
             } else if (root.job === "scroll-cancel") {
                 root.scrollSession = "";
@@ -664,13 +681,8 @@ Item {
                         }
                         IconButton {
                             iconName: "ocr"
-                            text: "Capture text"
-                            onClicked: root.capture("ocr")
-                        }
-                        IconButton {
-                            iconName: "qr"
-                            text: "Read QR from screen"
-                            onClicked: root.capture("qr")
+                            text: "Copy text or QR code"
+                            onClicked: root.capture("text")
                         }
                         Rectangle {
                             implicitWidth: 1
@@ -1094,12 +1106,8 @@ Item {
             x: window.width - width - 14
             y: window.height - height - 55
             MenuItem {
-                text: "Extract text"
-                onTriggered: root.run(["ocr", root.current], "ocr")
-            }
-            MenuItem {
-                text: "Read QR code"
-                onTriggered: root.run(["qr", root.current], "qr")
+                text: "Copy text or QR code"
+                onTriggered: root.run(["recognize", root.current], "recognize")
             }
             MenuSeparator {}
             MenuItem {

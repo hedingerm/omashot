@@ -48,7 +48,6 @@ Use when the claim is about how the installed app behaves or feels. The real oma
 ## Known gaps (not covered by any check)
 
 - **Product bug:** `capture repeat` after a frozen area capture (the default) fails with `No such file or directory`, or repeats a stale area, because `capture-frozen` doesn't write `.last-selection`. Reproduced 2026-10-25 at a6d16b6: `omashot snapshot`, `omashot capture-frozen <path> '0,0 100x80'`, `omashot capture repeat`.
-- **Product bug (from the 2026-10-25 audit, not re-run since):** a failed direct QR/OCR recognition returns early in `plugin/Main.qml` before its cleanup, leaving the temporary capture in history.
 - `ScrollCapture.qml` timing (final frame on Done, Cancel during a frame) has no repository check; `scroll-smoke` drives the backend only. Stitching ambiguity that no pixel matcher can resolve (blank stretches, jumps of more than a screenful in blank areas) is listed in README Known limitations.
 - Live pixelate/blur previews sample only the base image; a background before a pending transform falls back to the exact render.
 - Multi-monitor, other scales, non-English OCR, drag-and-drop into other apps: manual only.

@@ -12,10 +12,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Text and QR recognition are one action, **Copy text or QR code** (`omashot-ui text`, backend `recognize PATH`): it copies a QR code if the selection has one and otherwise its text. It replaces the separate launcher buttons and history menu items; `omashot-ui ocr` and `omashot-ui qr` still force one recognizer.
 - Editing is live: drawing, moving and resizing marks, undo/redo, background sliders and crop/rotate/flip/resize now appear in the next frame, at any number of annotations. The editor draws the edit on the GPU and swaps in the exact backend render when it catches up; saved and exported images are still that backend render. Copy, Save as and Drag Me wait for it instead of being disabled, and the editor no longer shows an updating state.
 - Region capture opens the selector about 0.6 s sooner, and captures, history thumbnails, pins and the background panel no longer block on full-size image decodes.
 - The installer restarts the Omarchy shell when `qmldir` is new or a singleton such as `Theme.qml` changed, because singletons survive a plugin rescan.
 - README screenshots are rendered in the Tokyo Night theme (`OMASHOT_SCREENSHOT_THEME` overrides it).
+
+### Fixed
+
+- A failed direct recognition no longer leaves its temporary capture in history or its launcher error replaced by "Done".
 
 ## [0.4.0] - 2026-10-25
 

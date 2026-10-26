@@ -181,6 +181,16 @@ fn checked(path: &str) -> Result<PathBuf> {
     image::image_dimensions(&p)?;
     Ok(p)
 }
+fn ocr(p: &Path) -> Result<String> {
+    let lang = config()["ocr_language"]
+        .as_str()
+        .unwrap_or("eng")
+        .to_string();
+    run(
+        "tesseract",
+        &strings(&[&p.to_string_lossy(), "stdout", "-l", &lang]),
+    )
+}
 fn copy_text(text: &[u8], mime: &str) -> Result<()> {
     let mut c = Command::new("wl-copy")
         .args(["--type", mime])
@@ -965,7 +975,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
     }
     match argument(a, 0)? {
         "help" | "--help" => Ok(
-            json!({"commands":["capture region|repeat|window|active|fullscreen [--delay N] [--cursor]","import PATH","history","cleanup","snapshot","capture-frozen PATH GEOMETRY","snapshot-cancel PATH","backgrounds","wallpaper import PATH|list|delete PATH","copy PATH","ocr PATH","qr PATH","export PATH DEST","delete PATH","render INPUT JSON_OR_FILE OUTPUT_OR_DASH_OR_--preview","scroll start [--geometry G] [--horizontal]","scroll append SESSION","scroll finish SESSION","scroll cancel SESSION","project IMAGE","config [JSON]"],"version":env!("CARGO_PKG_VERSION")}),
+            json!({"commands":["capture region|repeat|window|active|fullscreen [--delay N] [--cursor]","import PATH","history","cleanup","snapshot","capture-frozen PATH GEOMETRY","snapshot-cancel PATH","backgrounds","wallpaper import PATH|list|delete PATH","copy PATH","ocr PATH","qr PATH","recognize PATH","export PATH DEST","delete PATH","render INPUT JSON_OR_FILE OUTPUT_OR_DASH_OR_--preview","scroll start [--geometry G] [--horizontal]","scroll append SESSION","scroll finish SESSION","scroll cancel SESSION","project IMAGE","config [JSON]"],"version":env!("CARGO_PKG_VERSION")}),
         ),
         "capture" => {
             let mode = argument(a, 1)?;
@@ -1102,15 +1112,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
             Ok(json!({"ok":true}))
         }
         "ocr" => {
-            let p = checked(argument(a, 1)?)?;
-            let lang = config()["ocr_language"]
-                .as_str()
-                .unwrap_or("eng")
-                .to_string();
-            let text = run(
-                "tesseract",
-                &strings(&[&p.to_string_lossy(), "stdout", "-l", &lang]),
-            )?;
+            let text = ocr(&checked(argument(a, 1)?)?)?;
             copy_text(text.as_bytes(), "text/plain;charset=utf-8")?;
             Ok(json!({"text":text}))
         }
@@ -1122,6 +1124,27 @@ fn dispatch(a: &[String]) -> Result<Value> {
             )?;
             copy_text(text.as_bytes(), "text/plain;charset=utf-8")?;
             Ok(json!({"text":text}))
+        }
+        "recognize" => {
+            let p = checked(argument(a, 1)?)?;
+            // QR only: zbar's linear symbologies misread lines of text as barcodes. Exit 4 means no code.
+            let out = Command::new("zbarimg")
+                .args(["--quiet", "--raw", "-Sdisable", "-Sqrcode.enable"])
+                .arg(&p)
+                .output()?;
+            let (kind, text) = match out.status.code() {
+                Some(0) => ("qr", String::from_utf8(out.stdout)?.trim().to_string()),
+                Some(4) => ("text", ocr(&p)?),
+                _ => {
+                    let e = String::from_utf8_lossy(&out.stderr);
+                    return Err(err(&format!("zbarimg: {}", e.trim())));
+                }
+            };
+            if text.is_empty() {
+                return Ok(json!({"kind":"none","text":""}));
+            }
+            copy_text(text.as_bytes(), "text/plain;charset=utf-8")?;
+            Ok(json!({"kind":kind,"text":text}))
         }
         "export" => {
             let p = checked(argument(a, 1)?)?;
@@ -1370,6 +1393,7 @@ mod tests {
         assert!(help.contains("region|repeat|window|active|fullscreen"));
         assert!(help.contains("--horizontal"));
         assert!(help.contains("project IMAGE"));
+        assert!(help.contains("recognize PATH"));
     }
     #[test]
     fn desktop_provider_restores_after_capture_and_hide_errors() {
