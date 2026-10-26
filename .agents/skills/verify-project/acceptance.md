@@ -35,3 +35,10 @@
 - **Change:** live checks run in a nested Hyprland (`Nested` in `scripts/verify.py`) instead of on the user's desktop; `--desktop` keeps the old behavior.
 - **Result:** `scripts/verify.py --full` passed 28/28 with nothing shown on screen; `isolated-window` + `scroll` passed 3/3 repeated runs. `editor-latency` still passes the 50 ms p90 gate on the headless output.
 - **Pitfalls found:** Hyprland's default open animations made `isolated-window` and `scroll` capture a still-growing window (nested config disables animations); creating the headless output and disabling `WAYLAND-1` right after raced, so the runner retries until only `HEADLESS-1` remains.
+
+## 2026-10-25: parallel live sessions and pipelined builds
+
+- **Change:** live checks run across up to 3 nested Hyprlands at once (`--sessions`) instead of one serial lane; the debug and release builds run side by side and checks start as soon as their own binary is ready instead of after both builds; offscreen checks run longest first in a pool of `--jobs` (CPU count, at most 8; was 5 lanes in total). `render-identity` caches the baseline binary per commit in `target/render-identity/omashot-<sha>` (last 4 kept), so repeated runs against the same `HEAD` skip the baseline build. `history-service` now lists its `magick` prerequisite (it failed instead of reporting BLOCKED without it).
+- **Checked so far (cloud container without Hyprland, Quickshell or ImageMagick):** static checks and `install` pass in parallel and with `--serial`; checks without their tools report BLOCKED; debug and release builds ran concurrently without cargo lock waits; a SIGTERM during the release build killed it, skipped the check waiting on it and reported NOT PASSED.
+- **Not yet run:** the live tier on parallel nested sessions and a full timed run. Before relying on it, run `scripts/verify.py --full` three times on the Omarchy machine and record wall times and any check that flakes under the extra load here.
+
