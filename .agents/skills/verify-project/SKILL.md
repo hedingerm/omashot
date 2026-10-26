@@ -43,6 +43,7 @@ Live checks run in private, hidden Hyprlands nested in the session (one per `--s
 | `render-identity` | ~650 synthetic render cases pixel-identical to the baseline revision |
 | `history-service` | retention, wallpaper library, ownership checks through the CLI |
 | `scroll-stitch` | scrolling capture through the CLI with a fake grim over synthetic pages: pixel-exact stitching of text/list/horizontal content, scroll-up and overshoot rejection and recovery, sub-pixel shifts within 2 rows (also runs in CI) |
+| `keybindings` | shortcut validation, generated Lua, single hook block in an isolated `hypr/bindings.lua`, registration checked via a fake `hyprctl`, clean removal |
 | `editor-*` (offscreen) | editor event handling, object selection/move, narrow toolbar, background panel, live scene updating synchronously |
 | `theme-smoke` | `Theme` follows `OMASHOT_THEME_PATH` changes |
 | `ui-smoke` | live capture → quick access → editor → pin, project/export/delete, clipboard pixel equality, OCR, QR |

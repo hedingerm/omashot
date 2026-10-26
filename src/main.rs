@@ -1,4 +1,5 @@
 mod background;
+mod keybindings;
 mod snapshot;
 mod storage;
 use image::{DynamicImage, ImageFormat, RgbaImage};
@@ -969,7 +970,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(data(), fs::Permissions::from_mode(0o700))?;
     }
-    if !["config", "cleanup"].contains(&argument(a, 0)?) {
+    if !["config", "cleanup", "bindings"].contains(&argument(a, 0)?) {
         storage::cleanup(
             &data(),
             config()["retention_days"].as_u64().unwrap_or(30),
@@ -978,7 +979,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
     }
     match argument(a, 0)? {
         "help" | "--help" => Ok(
-            json!({"commands":["capture region|repeat|window|active|fullscreen [--delay N] [--cursor]","import PATH","history","cleanup","snapshot","capture-frozen PATH GEOMETRY","snapshot-cancel PATH","backgrounds","wallpaper import PATH|list|delete PATH","copy PATH","ocr PATH","qr PATH","recognize PATH","export PATH DEST","delete PATH","render INPUT JSON_OR_FILE OUTPUT_OR_DASH_OR_--preview","scroll start [--geometry G] [--horizontal]","scroll append SESSION","scroll finish SESSION","scroll cancel SESSION","project IMAGE","config [JSON]"],"version":env!("CARGO_PKG_VERSION")}),
+            json!({"commands":["capture region|repeat|window|active|fullscreen [--delay N] [--cursor]","import PATH","history","cleanup","snapshot","capture-frozen PATH GEOMETRY","snapshot-cancel PATH","backgrounds","wallpaper import PATH|list|delete PATH","copy PATH","ocr PATH","qr PATH","recognize PATH","export PATH DEST","delete PATH","render INPUT JSON_OR_FILE OUTPUT_OR_DASH_OR_--preview","scroll start [--geometry G] [--horizontal]","scroll append SESSION","scroll finish SESSION","scroll cancel SESSION","project IMAGE","config [JSON]","bindings [set JSON|remove]"],"version":env!("CARGO_PKG_VERSION")}),
         ),
         "capture" => {
             let mode = argument(a, 1)?;
@@ -1060,6 +1061,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
         "cleanup" => Ok(
             json!({"removed":storage::cleanup(&data(),config()["retention_days"].as_u64().unwrap_or(30),storage::now())?}),
         ),
+        "bindings" => keybindings::command(a),
         "snapshot" => snapshot::capture(a),
         "snapshot-cancel" => snapshot::cancel(argument(a, 1)?),
         "capture-frozen" => snapshot::save(argument(a, 1)?, argument(a, 2)?),

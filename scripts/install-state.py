@@ -19,6 +19,7 @@ SHELL_CONFIG = HOME / '.config/omarchy/shell.json'
 PLUGIN = HOME / '.config/omarchy/plugins/omashot'
 BINS = HOME / '.local/bin'
 RECEIPT = DATA / 'install.json'
+HYPR_BINDINGS = CONFIG_ROOT / 'hypr/bindings.lua'
 EXTRAS = [DATA_ROOT / 'applications/omashot.desktop',
           DATA_ROOT / 'icons/hicolor/scalable/apps/omashot.svg',
           DATA_ROOT / 'icons/hicolor/512x512/apps/omashot.png']
@@ -180,6 +181,31 @@ def install(repo, binary, reload):
     refresh(restart, reload)
 
 
+def unhook_shortcuts(reload):
+    # Drop the block OmaShot Preferences added to hypr/bindings.lua (omashot-ui is gone after this).
+    # The chosen shortcuts stay in the app config, so saving Preferences after a reinstall restores them.
+    if not HYPR_BINDINGS.is_file():
+        return
+    text = HYPR_BINDINGS.read_text()
+    if '-- BEGIN OMASHOT' not in text:
+        return
+    kept, inside = [], False
+    for line in text.splitlines(keepends=True):
+        if line.startswith('-- BEGIN OMASHOT'):
+            inside = True
+        elif inside and line.rstrip() == '-- END OMASHOT':
+            inside = False
+        elif not inside:
+            kept.append(line)
+    if inside:
+        print(f'Unterminated OmaShot block left in {HYPR_BINDINGS}; remove it by hand.', file=sys.stderr)
+        return
+    HYPR_BINDINGS.write_text(''.join(kept).rstrip() + '\n')
+    print(f'Removed OmaShot shortcuts from {HYPR_BINDINGS}')
+    if reload and shutil.which('hyprctl'):
+        subprocess.run(['hyprctl', 'reload'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def uninstall(reload):
     no_symlink(RECEIPT)
     if not RECEIPT.exists():
@@ -219,6 +245,7 @@ def uninstall(reload):
         atomic_json(RECEIPT, {'version': 1, 'files': remaining})
     else:
         RECEIPT.unlink()
+    unhook_shortcuts(reload)
     print('OmaShot disabled and unmodified installed files removed. Captures, projects and settings preserved.')
     refresh(False, reload)
 

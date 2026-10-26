@@ -82,7 +82,11 @@ printf 'capture' > "$XDG_DATA_HOME/omashot/capture.png"
 printf 'custom' > "$HOME/.config/omarchy/plugins/omashot/user-note.txt"
 printf '\n// local edit\n' >> "$HOME/.config/omarchy/plugins/omashot/Main.qml"
 if "$repo/scripts/install.sh" --binary "$test_home/backend" --no-reload; then echo 'FAIL: overwrite of local edit accepted' >&2; exit 1; fi
+# Uninstall removes only the shortcut block OmaShot Preferences added to hypr/bindings.lua.
+mkdir -p "$HOME/.config/hypr"
+printf -- '-- mine\no.bind("SUPER + B", "Browser", "chromium")\n\n-- BEGIN OMASHOT (managed by OmaShot Preferences)\npcall(dofile, "%s")\n-- END OMASHOT\n' "$HOME/.config/omashot/hyprland-bindings.lua" > "$HOME/.config/hypr/bindings.lua"
 "$repo/scripts/uninstall.sh" --no-reload
+[[ $(cat "$HOME/.config/hypr/bindings.lua") == $'-- mine\no.bind("SUPER + B", "Browser", "chromium")' ]]
 python3 - <<'PY'
 import json, pathlib
 h=pathlib.Path.home()

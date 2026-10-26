@@ -47,6 +47,9 @@ Item {
             "ocr": "ocr",
             "qr": "qr"
         })
+    property var shortcutInfo: ({})
+    property var shortcutDraft: ({})
+    property var pendingShortcuts: null
     Binding {
         target: Theme
         property: "corners"
@@ -96,6 +99,123 @@ Item {
                 let value = root.pendingPreferences;
                 root.pendingPreferences = null;
                 root.run(["config", JSON.stringify(value)], root.pendingPreferencesJob);
+            }
+        }
+    }
+    // Shortcut chords mirror the backend's canonical form: modifiers in SUPER, CTRL, ALT, SHIFT order, then the key.
+    function normalizeChord(text) {
+        let parts = String(text || "").split("+").map(function (p) {
+            return p.trim();
+        });
+        if (parts.length === 1 && !parts[0])
+            return "";
+        let key = parts.pop();
+        let names = {
+            SUPER: "SUPER", WIN: "SUPER", LOGO: "SUPER", META: "SUPER", MOD4: "SUPER",
+            CTRL: "CTRL", CONTROL: "CTRL", ALT: "ALT", MOD1: "ALT", SHIFT: "SHIFT"
+        };
+        let mods = parts.map(function (m) {
+            return names[m.toUpperCase()];
+        });
+        if (parts.length > 4 || mods.indexOf(undefined) >= 0 || !/^([A-Za-z0-9_]{1,32}|code:[0-9]{1,3})$/.test(key) || names[key.toUpperCase()])
+            return null;
+        return ["SUPER", "CTRL", "ALT", "SHIFT"].filter(function (m) {
+            return mods.indexOf(m) >= 0;
+        }).concat([key.length === 1 ? key.toUpperCase() : key]).join(" + ");
+    }
+    // Chord for a key event, or "" when the event should stay ordinary typing.
+    function eventChord(event) {
+        let k = event.key;
+        let special = {};
+        special[Qt.Key_Print] = "Print";
+        special[Qt.Key_Space] = "SPACE";
+        special[Qt.Key_Return] = "RETURN";
+        special[Qt.Key_Tab] = "TAB";
+        special[Qt.Key_Home] = "Home";
+        special[Qt.Key_End] = "End";
+        special[Qt.Key_Insert] = "Insert";
+        special[Qt.Key_Delete] = "Delete";
+        special[Qt.Key_PageUp] = "Page_Up";
+        special[Qt.Key_PageDown] = "Page_Down";
+        special[Qt.Key_Up] = "Up";
+        special[Qt.Key_Down] = "Down";
+        special[Qt.Key_Left] = "Left";
+        special[Qt.Key_Right] = "Right";
+        special[Qt.Key_Minus] = "minus";
+        special[Qt.Key_Equal] = "equal";
+        special[Qt.Key_Comma] = "comma";
+        special[Qt.Key_Period] = "period";
+        special[Qt.Key_Slash] = "slash";
+        let held = event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier);
+        let key = (k >= Qt.Key_A && k <= Qt.Key_Z) || (k >= Qt.Key_0 && k <= Qt.Key_9) ? String.fromCharCode(k) : k >= Qt.Key_F1 && k <= Qt.Key_F35 ? "F" + (k - Qt.Key_F1 + 1) : special[k] || "";
+        // Plain text keys (and Delete/arrows without modifiers) keep editing the field.
+        if (!key || (!held && (key.length === 1 || ["Delete", "Home", "End", "Left", "Right", "Up", "Down", "TAB", "RETURN", "SPACE", "minus", "equal", "comma", "period", "slash"].indexOf(key) >= 0)))
+            return "";
+        return [[Qt.MetaModifier, "SUPER"], [Qt.ControlModifier, "CTRL"], [Qt.AltModifier, "ALT"], [Qt.ShiftModifier, "SHIFT"]].filter(function (m) {
+            return event.modifiers & m[0];
+        }).map(function (m) {
+            return m[1];
+        }).concat([key]).join(" + ");
+    }
+    function shortcutNote(id, text) {
+        let keys = normalizeChord(text);
+        if (keys === null)
+            return "Not a valid shortcut";
+        if (!keys)
+            return "";
+        let same = function (a) {
+            return String(a || "").toLowerCase() === keys.toLowerCase();
+        };
+        for (let other in shortcutDraft)
+            if (other !== id && same(normalizeChord(shortcutDraft[other])))
+                return "Also used for " + ((shortcutInfo.actions || []).find(function (a) {
+                        return a.id === other;
+                    }) || {
+                        label: other
+                    }).label;
+        let hit = (shortcutInfo.taken || []).find(function (b) {
+            return same(b.keys);
+        });
+        if (hit)
+            return "Replaces " + (hit.description || hit.command);
+        if (shortcutInfo.replaced && shortcutInfo.replaced[id] && same((shortcutInfo.bindings || {})[id]))
+            return "Replaces " + shortcutInfo.replaced[id];
+        return "";
+    }
+    function saveShortcuts() {
+        let wanted = {};
+        let saved = shortcutInfo.bindings || {};
+        let changed = false;
+        for (let id in shortcutDraft) {
+            let keys = normalizeChord(shortcutDraft[id]);
+            if (keys === null) {
+                status = "Shortcut not saved: " + shortcutDraft[id] + " is not a valid shortcut";
+                return;
+            }
+            if (keys)
+                wanted[id] = keys;
+        }
+        for (let id of Object.keys(wanted).concat(Object.keys(saved)))
+            changed = changed || wanted[id] !== saved[id];
+        // After a reinstall the choice is still saved but no longer hooked into Hyprland.
+        changed = changed || (!shortcutInfo.installed && Object.keys(wanted).length > 0);
+        if (!changed || !shortcutInfo.available)
+            return;
+        pendingShortcuts = wanted;
+        shortcutsSaveTimer.restart();
+    }
+    Timer {
+        id: shortcutsSaveTimer
+        interval: 80
+        onTriggered: {
+            if (worker.running || preferencesSaveTimer.running || root.pendingPreferences !== null) {
+                restart();
+                return;
+            }
+            if (root.pendingShortcuts !== null) {
+                let value = root.pendingShortcuts;
+                root.pendingShortcuts = null;
+                root.run(["bindings", "set", JSON.stringify(value)], "bindings-save");
             }
         }
     }
@@ -358,6 +478,8 @@ Item {
                     root.capturing = false;
                     root.discardRecognition();
                 }
+                if (root.job === "bindings-load")
+                    settings.open();
                 root.status = data.error || err;
                 root.opened = true;
                 return;
@@ -450,7 +572,21 @@ Item {
                 prefMagnifier.checked = data.show_magnifier !== false;
                 prefWindowTransparent.checked = !!data.window_transparent;
                 prefCorners.currentIndex = Math.max(0, ["auto", "square", "rounded"].indexOf(data.corners || "auto"));
+                Qt.callLater(function () {
+                    root.run(["bindings"], "bindings-load");
+                });
+            } else if (root.job === "bindings-load") {
+                root.shortcutDraft = Object.assign({}, data.bindings || {});
+                root.shortcutInfo = data;
                 settings.open();
+            } else if (root.job === "bindings-save") {
+                root.shortcutInfo = data;
+                if (data.missing && data.missing.length)
+                    root.status = "Hyprland did not register shortcuts for: " + data.missing.join(", ") + (data.configErrors ? " (" + data.configErrors + ")" : "");
+                else if (!data.reloaded)
+                    root.status = "Shortcuts saved; they apply after Hyprland reloads";
+                else
+                    root.status = "Shortcuts applied";
             } else if (root.job === "recognize") {
                 outputText.text = data.text || "No text or QR code found";
                 output.open();
@@ -1232,6 +1368,7 @@ Item {
                 root.delay = c.delay;
                 root.cursor = c.cursor;
                 root.savePreferences(c, "settings-save");
+                root.saveShortcuts();
             }
             ScrollView {
                 anchors.fill: parent
@@ -1441,7 +1578,81 @@ Item {
                         text: "Dismiss preview after dropping into another app"
                     }
                     Label {
-                        text: "Omarchy has no desktop icons by default. Optional icon-provider hide/restore commands and keyboard shortcuts are documented in the README."
+                        text: "Keyboard shortcuts"
+                        font.bold: true
+                        font.pixelSize: 17
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 12
+                        opacity: 0.65
+                        text: root.shortcutInfo.available === false ? root.shortcutInfo.reason : "Focus a field and press the combination, or type it, e.g. SUPER + ALT + S. Combinations Hyprland already uses can only be typed; saving replaces them."
+                    }
+                    Repeater {
+                        model: root.shortcutInfo.actions || []
+                        delegate: ColumnLayout {
+                            id: shortcutRow
+                            required property var modelData
+                            readonly property string note: root.shortcutNote(shortcutRow.modelData.id, shortcutField.text)
+                            Layout.fillWidth: true
+                            spacing: 2
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    text: {
+                                        let name = shortcutRow.modelData.label.replace(/^OmaShot /, "");
+                                        return name.charAt(0).toUpperCase() + name.slice(1);
+                                    }
+                                    Layout.fillWidth: true
+                                }
+                                TextField {
+                                    id: shortcutField
+                                    objectName: "shortcut-" + shortcutRow.modelData.id
+                                    Layout.preferredWidth: 220
+                                    enabled: root.shortcutInfo.available === true
+                                    text: root.shortcutDraft[shortcutRow.modelData.id] || ""
+                                    placeholderText: "Not set"
+                                    Accessible.name: shortcutRow.modelData.label + " shortcut"
+                                    function store(value) {
+                                        let draft = Object.assign({}, root.shortcutDraft);
+                                        draft[shortcutRow.modelData.id] = value;
+                                        root.shortcutDraft = draft;
+                                    }
+                                    onTextEdited: store(text)
+                                    Keys.onPressed: function (event) {
+                                        let keys = root.eventChord(event);
+                                        if (!keys)
+                                            return;
+                                        text = keys;
+                                        store(keys);
+                                        event.accepted = true;
+                                    }
+                                }
+                                IconButton {
+                                    iconName: "close"
+                                    text: "Clear shortcut"
+                                    size: 30
+                                    iconSize: 16
+                                    enabled: shortcutField.enabled && shortcutField.text.length > 0
+                                    onClicked: {
+                                        shortcutField.text = "";
+                                        shortcutField.store("");
+                                    }
+                                }
+                            }
+                            Label {
+                                visible: shortcutRow.note.length > 0
+                                text: shortcutRow.note
+                                color: shortcutRow.note.startsWith("Replaces") ? Theme.warning : Theme.danger
+                                font.pixelSize: 11
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                    }
+                    Label {
+                        text: "Omarchy has no desktop icons by default. Optional icon-provider hide/restore commands are documented in the README."
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
                         opacity: 0.7
