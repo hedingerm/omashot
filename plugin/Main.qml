@@ -56,7 +56,12 @@ Item {
         value: root.preferences.corners || "auto"
     }
     function open(payload) {
-        if (scrollSurface.active)
+        let mode = "";
+        try {
+            mode = JSON.parse(payload || "{}").mode || "";
+        } catch (error) {}
+        // omashot-ui summons the plugin before routing any mode; only "open" shows the launcher.
+        if (scrollSurface.active || (mode && mode !== "open"))
             return;
         quickOpened = false;
         opened = true;

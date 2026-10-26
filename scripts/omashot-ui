@@ -11,7 +11,7 @@ case $mode in
   region|window|fullscreen|repeat|active|scroll|text|ocr|qr) ;;
   *) echo 'Usage: omashot-ui [open|history|preferences|region|window|fullscreen|repeat|active|scroll|text|ocr|qr]' >&2; exit 2 ;;
 esac
-if command -v omarchy-shell >/dev/null && [[ $(omarchy-shell shell summon omashot '{}' 2>/dev/null || true) == ok ]]; then
+if command -v omarchy-shell >/dev/null && [[ $(omarchy-shell shell summon omashot "{\"mode\":\"$mode\"}" 2>/dev/null || true) == ok ]]; then
   ready=0
   for ((attempt=0; attempt<50; attempt++)); do
     status=$(omarchy-shell omashot status 2>/dev/null || true)
@@ -25,25 +25,19 @@ if command -v omarchy-shell >/dev/null && [[ $(omarchy-shell shell summon omasho
     *) exit 0 ;;
   esac
 fi
-# A standalone shell has its own IPC endpoint. Reuse it if already running.
-if qs ipc -p "$plugin" call omashot open >/dev/null 2>&1; then
+# A standalone shell has its own IPC endpoint. Probe it with status: calling open would flash the launcher.
+route() {
   case $mode in
+    open) exec qs ipc -p "$plugin" call omashot open ;;
     history|preferences) exec qs ipc -p "$plugin" call omashot "$mode" ;;
-    region|window|fullscreen|repeat|active|scroll|text|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
-    *) exit 0 ;;
+    *) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
   esac
-fi
-# Initial standalone entry opens the launcher. Capture modes are dispatched once IPC is ready.
+}
+if qs ipc -p "$plugin" call omashot status >/dev/null 2>&1; then route; fi
 qs -p "$plugin" >/dev/null 2>&1 &
 qs_pid=$!
 for ((attempt=0; attempt<40; attempt++)); do
-  if qs ipc -p "$plugin" call omashot open >/dev/null 2>&1; then
-    case $mode in
-      history|preferences) exec qs ipc -p "$plugin" call omashot "$mode" ;;
-      region|window|fullscreen|repeat|active|scroll|text|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
-      *) exit 0 ;;
-    esac
-  fi
+  if qs ipc -p "$plugin" call omashot status >/dev/null 2>&1; then route; fi
   kill -0 "$qs_pid" 2>/dev/null || { echo 'OmaShot Quickshell failed to start.' >&2; exit 1; }
   sleep 0.1
 done

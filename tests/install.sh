@@ -131,6 +131,7 @@ chmod +x "$test_home/mock-bin/omarchy-shell" "$test_home/mock-bin/qs"
 export PATH="$test_home/mock-bin:$PATH" TEST_LOG="$test_home/launcher.log" TEST_HOST=ok TEST_READY_COUNT="$test_home/ready-count"
 "$repo/scripts/omashot-ui" fullscreen
 grep -Eq '^host omashot capture fullscreen$' "$TEST_LOG"
+grep -Fqx 'host shell summon omashot {"mode":"fullscreen"}' "$TEST_LOG"
 [[ $(grep -Ec '^host omashot status$' "$TEST_LOG") == 2 ]]
 "$repo/scripts/omashot-ui" history
 grep -Eq '^host omashot history$' "$TEST_LOG"
@@ -141,6 +142,7 @@ grep -Eq '^host omashot capture scroll$' "$TEST_LOG"
 export TEST_HOST=unknown
 "$repo/scripts/omashot-ui" region
 grep -Eq 'standalone ipc -p .*/plugin call omashot capture region$' "$TEST_LOG"
+! grep -Eq 'call omashot open$' "$TEST_LOG"
 "$repo/scripts/omashot-ui" history
 grep -Eq 'standalone ipc -p .*/plugin call omashot history$' "$TEST_LOG"
 echo 'PASS: isolated installation, updates, ownership, config preservation, uninstall and launcher routing' 
