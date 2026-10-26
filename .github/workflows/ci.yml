@@ -15,7 +15,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install dependencies
-        run: pacman -Syu --noconfirm --needed rust imagemagick fontconfig ttf-dejavu python jq git
+        run: pacman -Syu --noconfirm --needed rust imagemagick fontconfig ttf-dejavu python jq git diffutils
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - name: Format
@@ -24,6 +24,10 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --locked
+      - name: Scrolling stitch test
+        run: cargo build --locked && python3 tests/scroll-stitch.py
+      - name: Keybindings test
+        run: cargo build --locked && python3 tests/keybindings.py
       - name: Installer test
         run: bash tests/install.sh
       - name: Manifest and version consistency
@@ -32,5 +36,7 @@ jobs:
           cargo_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           manifest_version=$(jq -r .version plugin/manifest.json)
           test "$cargo_version" = "$manifest_version" || { echo "Cargo.toml ($cargo_version) and manifest.json ($manifest_version) versions differ"; exit 1; }
+      - name: Verification runner regression test
+        run: python3 tests/verify-runner.py
       - name: Python syntax
         run: python3 -m py_compile scripts/*.py tests/*.py

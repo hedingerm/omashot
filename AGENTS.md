@@ -14,8 +14,10 @@ User-facing behavior is documented in `README.md`; read it before changing featu
 | `src/main.rs` | CLI `dispatch`, capture geometry, render pipeline (annotation ops → ImageMagick), config validation, unit tests |
 | `src/storage.rs` | History listing, retention cleanup, wallpaper library, ownership checks |
 | `src/background.rs` | The 20 background presets, mesh renderer, thumbnails |
+| `src/keybindings.rs` | Global shortcuts: generated `omashot/hyprland-bindings.lua` plus one marked block in `hypr/bindings.lua` (Omarchy 4 Lua config) |
 | `src/snapshot.rs` | Frozen-desktop snapshots, isolated window capture (spawns `plugin/WindowCapture.qml`) |
 | `plugin/Main.qml` | Launcher window, `IpcHandler` (`target: "omashot"`), quick access, pins, preferences |
+| `plugin/BarWidget.qml` | Omarchy bar icon and right-click capture menu; runs `omashot-ui <mode>`. Loaded only by omarchy-shell (imports `qs.Ui`) |
 | `plugin/Editor.qml`, `AnnotationGeometry.js` | Annotation editor and its hit-test/geometry helpers |
 | `plugin/LiveScene.qml` | Live GPU preview of an edit (annotations, background, pending transforms); mirrors the backend render, which replaces it once current. Keep both in sync (`tests/live-scene-fidelity.py`) |
 | `plugin/BackgroundPanel.qml` | Background sidebar, presets, wallpaper import |
@@ -60,7 +62,7 @@ Quickshell has crashed during QML live-reload here: stop standalone instances be
 - **Screenshots:** after any visible UI or rendering change, follow the `update-screenshots` skill (`.agents/skills/update-screenshots/SKILL.md`): run `scripts/screenshots.sh` (needs a Wayland session, Chromium, ImageMagick, Quickshell) and commit the updated `docs/screenshots/*.png`. Change the demo content in `docs/screenshots/source/`, never hand-edit the PNGs. Review the images before committing.
 - **Versioning:** `Cargo.toml` and `plugin/manifest.json` versions must match.
 - **New QML files** require an Omarchy shell restart (type cache); the installer handles this, but standalone testing needs a fresh `qs` process.
-- **Theming:** never hardcode UI chrome colors; use `Theme` roles and set `palette: Theme.controls.palette` on new windows and every Popup/Menu/Dialog. Annotation, background-preset and image-overlay colors are content and stay fixed. New QML files must also be listed in `plugin/qmldir`, except `ShellPalette.qml`, which imports omarchy-shell's `qs.Commons` and is loaded only when that resolves. Singletons survive a plugin rescan, so the installer restarts the shell when one changes.
+- **Theming:** never hardcode UI chrome colors; use `Theme` roles and set `palette: Theme.controls.palette` on new windows and every Popup/Menu/Dialog. Annotation, background-preset and image-overlay colors are content and stay fixed. New QML files must also be listed in `plugin/qmldir`, except `ShellPalette.qml` and `BarWidget.qml`, which import omarchy-shell's `qs.Commons`/`qs.Ui` and load only inside the shell. `BarWidget.qml` is drawn by the bar, so its popup uses the shell's `Commons.Color` popup/menu roles to match the other bar popups. Singletons survive a plugin rescan, so the installer restarts the shell when one changes.
 - **Naming:** display name `OmaShot`; identifiers, paths, commands, IPC and env vars use `omashot` / `OMASHOT_`.
 - **Style:** match the existing dense, compact code (Rust 2024, few deps: `serde`, `serde_json`, `image`). Shell out to system tools (grim, slurp, magick, tesseract, zbarimg, hyprctl) rather than adding crates. Python test scripts use only the standard library.
 

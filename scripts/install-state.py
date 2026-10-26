@@ -19,6 +19,7 @@ SHELL_CONFIG = HOME / '.config/omarchy/shell.json'
 PLUGIN = HOME / '.config/omarchy/plugins/omashot'
 BINS = HOME / '.local/bin'
 RECEIPT = DATA / 'install.json'
+HYPR_BINDINGS = CONFIG_ROOT / 'hypr/bindings.lua'
 EXTRAS = [DATA_ROOT / 'applications/omashot.desktop',
           DATA_ROOT / 'icons/hicolor/scalable/apps/omashot.svg',
           DATA_ROOT / 'icons/hicolor/512x512/apps/omashot.png']
@@ -105,6 +106,25 @@ def refresh(restart, enabled):
             print('Shell unavailable; plugin will load when Omarchy starts.', file=sys.stderr)
 
 
+def is_omashot(entry):
+    return entry == 'omashot' or isinstance(entry, dict) and entry.get('id') == 'omashot'
+
+
+def bar_entries(state):
+    layout = state.get('bar', {}).get('layout') if isinstance(state.get('bar'), dict) else None
+    return layout if isinstance(layout, dict) and all(isinstance(v, list) for v in layout.values()) else None
+
+
+def place_bar_widget(state):
+    # Placed once; an icon the user later drags out of the bar stays out on updates.
+    layout = bar_entries(state)
+    if layout is None or (state.get('bar') or {}).get('id') not in [None, 'omarchy.bar']:
+        print('Add the OmaShot bar icon with: omarchy-shell shell putBarWidget omashot \'{"section":"right"}\'')
+        return
+    if not any(is_omashot(e) for entries in layout.values() for e in entries):
+        layout.setdefault('right', []).insert(0, {'id': 'omashot'})
+
+
 def install(repo, binary, reload):
     state = settings()
     for path in [DATA, APP_CONFIG, PLUGIN, RECEIPT, *EXTRAS]:
@@ -152,11 +172,38 @@ def install(repo, binary, reload):
     state.setdefault('plugins', [])
     if not any(isinstance(p, dict) and p.get('id') == 'omashot' for p in state['plugins']):
         state['plugins'].append({'id': 'omashot'})
+    if not (RECEIPT.exists() and read_json(RECEIPT).get('bar')):
+        place_bar_widget(state)
     atomic_json(SHELL_CONFIG, state)
-    atomic_json(RECEIPT, {'version': 1, 'files': installed})
+    atomic_json(RECEIPT, {'version': 1, 'bar': True, 'files': installed})
     print(f'Installed OmaShot to {PLUGIN}')
     print('Launch with ~/.local/bin/omashot-ui (ensure ~/.local/bin is on PATH).')
     refresh(restart, reload)
+
+
+def unhook_shortcuts(reload):
+    # Drop the block OmaShot Preferences added to hypr/bindings.lua (omashot-ui is gone after this).
+    # The chosen shortcuts stay in the app config, so saving Preferences after a reinstall restores them.
+    if not HYPR_BINDINGS.is_file():
+        return
+    text = HYPR_BINDINGS.read_text()
+    if '-- BEGIN OMASHOT' not in text:
+        return
+    kept, inside = [], False
+    for line in text.splitlines(keepends=True):
+        if line.startswith('-- BEGIN OMASHOT'):
+            inside = True
+        elif inside and line.rstrip() == '-- END OMASHOT':
+            inside = False
+        elif not inside:
+            kept.append(line)
+    if inside:
+        print(f'Unterminated OmaShot block left in {HYPR_BINDINGS}; remove it by hand.', file=sys.stderr)
+        return
+    HYPR_BINDINGS.write_text(''.join(kept).rstrip() + '\n')
+    print(f'Removed OmaShot shortcuts from {HYPR_BINDINGS}')
+    if reload and shutil.which('hyprctl'):
+        subprocess.run(['hyprctl', 'reload'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def uninstall(reload):
@@ -173,6 +220,9 @@ def uninstall(reload):
     remaining = {}
     backup_shell()
     state['plugins'] = [p for p in state.get('plugins', []) if not (isinstance(p, dict) and p.get('id') == 'omashot')]
+    layout = bar_entries(state)
+    for section in (layout or {}):
+        layout[section] = [e for e in layout[section] if not is_omashot(e)]
     atomic_json(SHELL_CONFIG, state)
     for raw, expected in owned.items():
         path = Path(raw)
@@ -195,6 +245,7 @@ def uninstall(reload):
         atomic_json(RECEIPT, {'version': 1, 'files': remaining})
     else:
         RECEIPT.unlink()
+    unhook_shortcuts(reload)
     print('OmaShot disabled and unmodified installed files removed. Captures, projects and settings preserved.')
     refresh(False, reload)
 

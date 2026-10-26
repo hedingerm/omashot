@@ -57,6 +57,7 @@ OmaShot is a native screenshot tool for Omarchy, built as an Omarchy shell plugi
 - **Blur, pixelate and redact** sensitive content
 - Crop, rotate, flip and combine images
 - Every mark stays editable: select, move, resize, undo/redo
+- Remembers your last tool, color, sizes, text style, redaction, crop options and background for the next edit
 
 </td>
 </tr>
@@ -77,7 +78,7 @@ OmaShot is a native screenshot tool for Omarchy, built as an Omarchy shell plugi
 - **Pins** float above your windows with opacity and click-through
 - Follows the **active Omarchy theme** live, fading with the shell on every switch
 - Square corners like the rest of Omarchy: follows Hyprland's `decoration:rounding`, or force square/rounded in Preferences
-- Local **OCR** (Tesseract) and **QR** decoding straight to the clipboard
+- Local **text and QR recognition** (Tesseract, zbar) straight to the clipboard: one action reads a QR code if there is one, otherwise the text
 - **History** that expires after a configurable number of days
 
 </td>
@@ -130,7 +131,7 @@ cd omashot
 omashot-ui
 ```
 
-The installer builds the release binary, puts `omashot` and `omashot-ui` in `~/.local/bin` (make sure it's on your `PATH`), installs the plugin into `~/.config/omarchy/plugins/omashot`, adds a desktop launcher and icons, and registers the plugin in `shell.json` (backing it up first).
+The installer builds the release binary, puts `omashot` and `omashot-ui` in `~/.local/bin` (make sure it's on your `PATH`), installs the plugin into `~/.config/omarchy/plugins/omashot`, adds a desktop launcher and icons, registers the plugin in `shell.json` (backing it up first) and adds the OmaShot icon to the bar.
 
 > [!NOTE]
 > OmaShot ships a native backend, so install it with `scripts/install.sh` rather than `omarchy plugin add`. To use a prebuilt binary, run `./scripts/install.sh --binary PATH`.
@@ -155,20 +156,32 @@ Open the launcher with `omashot-ui`, or go straight to a mode:
 | `omashot-ui active` | Capture the focused window |
 | `omashot-ui fullscreen` | Capture the whole screen |
 | `omashot-ui repeat` | Capture the last area again |
+| `omashot-ui scroll` | Select an area and start a scrolling capture |
 | `omashot-ui history` | Browse previous captures |
-| `omashot-ui ocr` | Select an area and copy its text |
-| `omashot-ui qr` | Select an area and copy the decoded QR code |
+| `omashot-ui preferences` | Open Preferences |
+| `omashot-ui text` | Select an area and copy its QR code or, if it has none, its text (`ocr` and `qr` force one) |
+
+### Bar icon
+
+OmaShot runs inside the Omarchy shell, which Hyprland starts at login, so there is nothing extra to autostart. Retention cleanup runs in the background from the start; the launcher loads on first use and stays loaded.
+
+The installer adds an OmaShot icon to the right side of the Omarchy bar once. Left-click opens the launcher, middle-click captures an area, and right-click opens a menu with every capture mode, history and editor, and Preferences. The menu shows registered OmaShot shortcuts next to their actions, including shortcuts saved in Preferences. If you remove the icon, updates leave it out. To bring it back, run `omarchy-shell shell putBarWidget omashot '{"section":"right"}'`. Removing the icon does not stop OmaShot.
 
 ### Keybindings
 
-Bind any command through Omarchy's keybinding config, for example in `~/.config/hypr/bindings.lua`:
+Set shortcuts under **Preferences → Keyboard shortcuts**. Focus a field and press the combination, or type it (`SUPER + ALT + S`, `Print`, `CTRL + SHIFT + F5`). A combination Hyprland already uses never reaches OmaShot, so type it instead. The field then shows what it replaces (for example Omarchy's own `Screenshot`). On Save, OmaShot reloads Hyprland and checks that every shortcut is registered.
+
+This needs Omarchy 4's Lua config. OmaShot writes your shortcuts to `~/.config/omashot/hyprland-bindings.lua` and adds one marked block to `~/.config/hypr/bindings.lua` that loads this file:
 
 ```lua
-o.bind("SUPER + ALT + S", "OmaShot area", "omashot-ui region")
-o.bind("SUPER + ALT + H", "OmaShot history", "omashot-ui history")
+-- BEGIN OMASHOT (managed by OmaShot Preferences)
+pcall(dofile, "/home/you/.config/omashot/hyprland-bindings.lua")
+-- END OMASHOT
 ```
 
-Pick chords that aren't taken yet (replacing one requires `hl.unbind(...)`), then check with `hyprctl reload` and `hyprctl configerrors`. Installing OmaShot doesn't touch your existing screenshot bindings.
+Nothing else in your config is changed. A replaced binding is unbound only while OmaShot's shortcut uses it. Clearing every field, `omashot bindings remove` or uninstalling removes the block again. Installing OmaShot alone doesn't touch your screenshot bindings.
+
+You can also bind commands by hand in `~/.config/hypr/bindings.lua`, e.g. `o.bind("SUPER + ALT + S", "OmaShot area", "omashot-ui region")`. To replace a taken chord, add `hl.unbind(...)` before it, then check with `hyprctl reload` and `hyprctl configerrors`.
 
 ### Tips
 
@@ -195,7 +208,7 @@ Pick chords that aren't taken yet (replacing one requires `hl.unbind(...)`), the
 <details>
 <summary><b>Scrolling capture</b></summary>
 
-Select the scrolling part of the window and press Start, then scroll normally. Frames are stitched as you go and a preview grows beside the selection. Keep some overlap between scroll steps. Sticky headers and animations can confuse stitching, so a smaller selection usually helps. Horizontal mode handles side-scrolling content.
+Select the scrolling part of the window and press Start, then scroll normally. Frames are stitched as you go and a preview grows beside the selection; Done takes one last frame first. Keep some overlap between scroll steps, at least a line or two of content. If you scroll too far or back up, the capture waits and tells you, and continues once you scroll back to where it stopped. Sticky headers and animations can confuse stitching, so a smaller selection usually helps. Horizontal mode handles side-scrolling content.
 
 </details>
 
@@ -203,7 +216,7 @@ Select the scrolling part of the window and press Start, then scroll normally. F
 <summary><b>Pins, OCR and QR</b></summary>
 
 - Pins float above normal windows. Hover to move, resize, change opacity or make them click-through.
-- OCR and QR run locally and copy the result. Pick the OCR language in Preferences (requires the matching `tesseract-data-*` package).
+- **Copy text or QR code** runs locally and copies the result. A QR code in the selection wins; otherwise its text is recognized. To get the text around a QR code, select only the text. Pick the OCR language in Preferences (requires the matching `tesseract-data-*` package).
 
 </details>
 
@@ -229,7 +242,8 @@ Most settings live in the Preferences panel. Under the hood:
 | Path | Contents |
 |---|---|
 | `~/.local/share/omashot/` | Captures, editable projects, wallpapers (`$XDG_DATA_HOME`) |
-| `~/.config/omashot/config.json` | Preferences (`$XDG_CONFIG_HOME`) |
+| `~/.config/omashot/config.json` | Preferences and the editor's last-used settings (`editor`) (`$XDG_CONFIG_HOME`) |
+| `~/.config/omashot/keybindings.json`, `hyprland-bindings.lua` | Keyboard shortcuts and the generated Hyprland file |
 
 `omashot config` prints the current configuration; `omashot config '<json>'` replaces it, so keep existing keys when scripting.
 
@@ -278,7 +292,7 @@ packaging/  desktop entry
 
 ## Known limitations
 
-- Scrolling capture follows your manual scrolling; it doesn't scroll the app for you.
+- Scrolling capture follows your manual scrolling; it doesn't scroll the app for you. Stitching only sees pixels, so long blank stretches can come out shorter, and a jump of more than a screenful inside a blank area can join unrelated parts.
 - Marks drawn before a crop, resize or rotation stay in the project, but you need to undo the transform to edit their handles.
 - No crop edge snapping or screen color picker yet.
 - OCR needs installed Tesseract language data.

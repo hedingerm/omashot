@@ -1,4 +1,5 @@
 mod background;
+mod keybindings;
 mod snapshot;
 mod storage;
 use image::{DynamicImage, ImageFormat, RgbaImage};
@@ -122,6 +123,9 @@ fn validate_config(c: &Value) -> Result<()> {
     {
         return Err(err("corners must be auto, square or rounded"));
     }
+    if !c["editor"].is_null() && !c["editor"].is_object() {
+        return Err(err("editor must be an object"));
+    }
     if c["hide_desktop_icons"].as_bool().unwrap_or(false) {
         desktop_hook(c, "desktop_hide_argv")?;
         desktop_hook(c, "desktop_restore_argv")?;
@@ -180,6 +184,16 @@ fn checked(path: &str) -> Result<PathBuf> {
     }
     image::image_dimensions(&p)?;
     Ok(p)
+}
+fn ocr(p: &Path) -> Result<String> {
+    let lang = config()["ocr_language"]
+        .as_str()
+        .unwrap_or("eng")
+        .to_string();
+    run(
+        "tesseract",
+        &strings(&[&p.to_string_lossy(), "stdout", "-l", &lang]),
+    )
 }
 fn copy_text(text: &[u8], mime: &str) -> Result<()> {
     let mut c = Command::new("wl-copy")
@@ -771,52 +785,172 @@ fn render(input: &Path, ops: &Value, output: &Path) -> Result<Option<Value>> {
     .save(output)?;
     Ok(content_rect)
 }
-fn stitch(a: &RgbaImage, b: &RgbaImage) -> Result<RgbaImage> {
-    if a.width() != b.width() {
-        return Err(err("Scroll frames have different widths"));
-    }
+fn row_span(img: &RgbaImage, y: u32, x0: u32, x1: u32) -> &[u8] {
+    let w = img.width() as usize * 4;
+    &img.as_raw()[y as usize * w + x0 as usize * 4..y as usize * w + x1 as usize * 4]
+}
+/// Best overlap of `b`'s top with `a`'s bottom as (mean difference, rows, backed by content,
+/// position of `b`'s top in `a` including a sub-pixel part).
+fn overlap(a: &RgbaImage, b: &RgbaImage) -> Option<(f64, u32, bool, f64)> {
     let max = a.height().min(b.height());
-    if max < 8 || b.width() < 8 {
-        return Err(err("Scroll frame too small"));
+    // Compare the central content to tolerate stationary scrollbars and window borders.
+    let (x0, x1) = (b.width() / 10, b.width() * 9 / 10);
+    let row = |img, y| row_span(img, y, x0, x1);
+    // textured[k]: rows of b[..k] with visible detail. Blank rows match anything, so a match
+    // needs content, the whole frame (no scroll) or a long blank run (scrolling through a gap).
+    // A text line has about 14 detailed rows; inexact matches need more evidence than exact ones.
+    let detail = |r: &[u8]| {
+        (0..3)
+            .map(|k| {
+                let c = r.iter().skip(k).step_by(4);
+                c.clone().max().unwrap_or(&0) - c.min().unwrap_or(&0)
+            })
+            .max()
+            .unwrap_or(0)
+    };
+    let (da, db): (Vec<u8>, Vec<u8>) = (0..max)
+        .map(|y| (detail(row(a, a.height() - max + y)), detail(row(b, y))))
+        .unzip();
+    let mut textured = vec![0u32; max as usize + 1];
+    for y in 0..max as usize {
+        textured[y + 1] = textured[y] + (db[y] > 24) as u32;
     }
-    let mut best = (f64::INFINITY, 0u32);
-    // Sample the central content to tolerate stationary scrollbars and window borders.
-    for overlap in 8..=max {
+    let content = |k: u32, need: u32| textured[k as usize] >= need.min(max / 4).max(8);
+    let usable = |k: u32, need| k == max || content(k, need) || k >= max / 2;
+    // Unchanged pixels are the usual case: try exact matches by row hash first, largest first.
+    let hash = |img, y| {
+        let mut h = std::hash::DefaultHasher::new();
+        std::hash::Hash::hash(row(img, y), &mut h);
+        std::hash::Hasher::finish(&h)
+    };
+    let ha: Vec<u64> = (a.height() - max..a.height()).map(|y| hash(a, y)).collect();
+    let hb: Vec<u64> = (0..max).map(|y| hash(b, y)).collect();
+    if let Some(k) = (8..=max)
+        .rev()
+        .find(|&k| usable(k, 16) && ha[(max - k) as usize..] == hb[..k as usize])
+    {
+        return Some((0., k, content(k, 16), (a.height() - k) as f64));
+    }
+    // A coarse sample finds candidate overlaps; sparse samples alone accept false matches on
+    // text over plain backgrounds, so candidates are confirmed against every overlapping pixel.
+    let mut candidates = Vec::new();
+    // Blank runs resample to blank rows, so content-free matches must be exact; fitting them
+    // here would also cost a full comparison per candidate.
+    // Thin text barely moves a row's mean; text against a blank row still differs. Counting
+    // such rows from the detail levels alone rejects most candidates before any pixel work.
+    let lost = |ya: usize, yb: usize| {
+        let (ra, rb) = (da[ya].max(da[(ya + 1).min(max as usize - 1)]), db[yb]);
+        (ra >= 64 && rb <= 8) || (rb >= 64 && ra <= 8)
+    };
+    let plausible = |k: u32| {
+        let lost = (0..k - 1).filter(|&j| lost((max - k + j) as usize, j as usize));
+        lost.count() as u32 * 3 <= textured[k as usize]
+    };
+    for overlap in (8..=max).filter(|&k| (k == max || content(k, 24)) && plausible(k)) {
         let mut score = 0u64;
         let mut count = 0u64;
         for by in (0..overlap).step_by((overlap as usize / 32).max(1)) {
-            for x in (b.width() / 10..b.width() * 9 / 10).step_by((b.width() as usize / 80).max(1))
-            {
-                let p = a.get_pixel(x, a.height() - overlap + by);
-                let q = b.get_pixel(x, by);
+            let (p, q) = (row(a, a.height() - overlap + by), row(b, by));
+            for x in (0..p.len() / 4).step_by((b.width() as usize / 80).max(1)) {
                 for k in 0..3 {
-                    score += p[k].abs_diff(q[k]) as u64;
+                    score += p[x * 4 + k].abs_diff(q[x * 4 + k]) as u64;
                     count += 1;
                 }
             }
         }
         let score = score as f64 / count.max(1) as f64;
-        if score <= best.0 {
-            best = (score, overlap);
+        if score <= 12. {
+            candidates.push((score, overlap));
         }
     }
-    if best.0 > 12. {
-        return Err(err(
-            "No matching overlap found. Scroll less and append again.",
-        ));
+    candidates.sort_by(|p, q| p.0.total_cmp(&q.0).then(q.1.cmp(&p.1)));
+    // Fractional scaling or compositor resampling shifts content by part of a pixel, so each
+    // candidate is fitted as a blend of neighbouring rows in quarter steps. Means over mostly
+    // blank rows hide mismatched text, so differing rows are limited too: resampled true
+    // matches differ in under a fifth of their detailed rows, unrelated content in most.
+    // Lowest difference wins; ties keep the larger overlap (unchanged or blank frames add nothing).
+    let n = (x1 - x0) as u64 * 3;
+    let mut best = (f64::INFINITY, 0u32, 0u32);
+    for &(_, overlap) in &candidates {
+        let count = (overlap - 1) as u64 * n * 4;
+        for f in 0..4u32 {
+            let bound = best.0.min(4.) * count as f64;
+            let (mut sum, mut bad) = (0u64, 0u32);
+            let mut beaten = overlap < best.1 && bound <= 0.;
+            for by in 0..overlap - 1 {
+                if beaten {
+                    break;
+                }
+                let y = a.height() - overlap + by;
+                let (p, p1, q) = (row(a, y), row(a, y + 1), row(b, by));
+                let mut line = 0u64;
+                for i in (0..q.len()).filter(|i| i % 4 != 3) {
+                    let blend = p[i] as u32 * (4 - f) + p1[i] as u32 * f;
+                    line += blend.abs_diff(q[i] as u32 * 4) as u64;
+                }
+                sum += line;
+                bad +=
+                    (lost((max - overlap + by) as usize, by as usize) || line > 6 * 4 * n) as u32;
+                let s = sum as f64;
+                beaten = bad * 3 > textured[overlap as usize]
+                    || if overlap > best.1 {
+                        s > bound
+                    } else {
+                        s >= bound
+                    };
+            }
+            if !beaten {
+                best = (sum as f64 / count as f64, overlap, f);
+            }
+        }
     }
-    let height = a.height() + b.height() - best.1;
+    let pos = (a.height() - best.1) as f64 + best.2 as f64 / 4.;
+    (best.0 <= 4.).then(|| (best.0, best.1, content(best.1, 24), pos))
+}
+/// Appends `b` to the capture `a`, matched against the previous frame `last` rather than the
+/// capture's bottom, which mixes frames sampled at different sub-pixel offsets. `residual` is
+/// how far `last` really ends below the capture; it carries sub-pixel shifts so they add up.
+fn stitch(
+    a: &RgbaImage,
+    last: &RgbaImage,
+    b: &RgbaImage,
+    residual: f64,
+) -> Result<(RgbaImage, f64)> {
+    if a.width() != b.width() || last.width() != b.width() {
+        return Err(err("Scroll frames have different widths"));
+    }
+    let max = last.height().min(b.height());
+    if max < 8 || b.width() < 8 {
+        return Err(err("Scroll frame too small"));
+    }
+    // Scrolled back up: the previous frame's top content reappears lower in the new frame.
+    // Repeated layouts (list rows) can also fit forward, so the better fit decides.
+    let found = overlap(last, b);
+    let up =
+        |forward: f64| matches!(overlap(b, last), Some((s, k, true, _)) if k < max && s < forward);
+    let pos = match found {
+        Some((s, k, c, pos)) if k == max || (s == 0. && c) => pos,
+        Some((s, _, c, pos)) if !up(if c { s } else { f64::INFINITY }) => pos,
+        _ if found.is_some() || up(f64::INFINITY) => {
+            return Err(err("Scrolled back up. Scroll down to continue."));
+        }
+        _ => {
+            return Err(err(
+                "No matching overlap found. Scroll back a little to continue.",
+            ));
+        }
+    };
+    let end = a.height() as f64 - last.height() as f64 + residual + pos + b.height() as f64;
+    let height = (end.round().max(a.height() as f64) as u32).min(a.height() + b.height());
     if height > 100000 || height as u64 * a.width() as u64 > 100_000_000 {
         return Err(err("Scrolling capture too large"));
     }
     let mut out = RgbaImage::new(a.width(), height);
     image::imageops::replace(&mut out, a, 0, 0);
-    for y in best.1..b.height() {
-        for x in 0..b.width() {
-            out.put_pixel(x, a.height() + y - best.1, *b.get_pixel(x, y));
-        }
-    }
-    Ok(out)
+    let added = height - a.height();
+    let tail = image::imageops::crop_imm(b, 0, b.height() - added, b.width(), added).to_image();
+    image::imageops::replace(&mut out, &tail, 0, a.height() as i64);
+    Ok((out, end - height as f64))
 }
 fn session_file(id: &str) -> Result<PathBuf> {
     if !id.chars().all(|c| c.is_ascii_digit() || c == '-') || id.is_empty() {
@@ -836,7 +970,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(data(), fs::Permissions::from_mode(0o700))?;
     }
-    if !["config", "cleanup"].contains(&argument(a, 0)?) {
+    if !["config", "cleanup", "bindings"].contains(&argument(a, 0)?) {
         storage::cleanup(
             &data(),
             config()["retention_days"].as_u64().unwrap_or(30),
@@ -845,7 +979,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
     }
     match argument(a, 0)? {
         "help" | "--help" => Ok(
-            json!({"commands":["capture region|repeat|window|active|fullscreen [--delay N] [--cursor]","import PATH","history","cleanup","snapshot","capture-frozen PATH GEOMETRY","snapshot-cancel PATH","backgrounds","wallpaper import PATH|list|delete PATH","copy PATH","ocr PATH","qr PATH","export PATH DEST","delete PATH","render INPUT JSON_OR_FILE OUTPUT_OR_DASH_OR_--preview","scroll start [--geometry G] [--horizontal]","scroll append SESSION","scroll finish SESSION","scroll cancel SESSION","project IMAGE","config [JSON]"],"version":env!("CARGO_PKG_VERSION")}),
+            json!({"commands":["capture region|repeat|window|active|fullscreen [--delay N] [--cursor]","import PATH","history","cleanup","snapshot","capture-frozen PATH GEOMETRY","snapshot-cancel PATH","backgrounds","wallpaper import PATH|list|delete PATH","copy PATH","ocr PATH","qr PATH","recognize PATH","export PATH DEST","delete PATH","render INPUT JSON_OR_FILE OUTPUT_OR_DASH_OR_--preview","scroll start [--geometry G] [--horizontal]","scroll append SESSION","scroll finish SESSION","scroll cancel SESSION","project IMAGE","config [JSON]","bindings [set JSON|remove]"],"version":env!("CARGO_PKG_VERSION")}),
         ),
         "capture" => {
             let mode = argument(a, 1)?;
@@ -927,6 +1061,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
         "cleanup" => Ok(
             json!({"removed":storage::cleanup(&data(),config()["retention_days"].as_u64().unwrap_or(30),storage::now())?}),
         ),
+        "bindings" => keybindings::command(a),
         "snapshot" => snapshot::capture(a),
         "snapshot-cancel" => snapshot::cancel(argument(a, 1)?),
         "capture-frozen" => snapshot::save(argument(a, 1)?, argument(a, 2)?),
@@ -982,15 +1117,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
             Ok(json!({"ok":true}))
         }
         "ocr" => {
-            let p = checked(argument(a, 1)?)?;
-            let lang = config()["ocr_language"]
-                .as_str()
-                .unwrap_or("eng")
-                .to_string();
-            let text = run(
-                "tesseract",
-                &strings(&[&p.to_string_lossy(), "stdout", "-l", &lang]),
-            )?;
+            let text = ocr(&checked(argument(a, 1)?)?)?;
             copy_text(text.as_bytes(), "text/plain;charset=utf-8")?;
             Ok(json!({"text":text}))
         }
@@ -1002,6 +1129,27 @@ fn dispatch(a: &[String]) -> Result<Value> {
             )?;
             copy_text(text.as_bytes(), "text/plain;charset=utf-8")?;
             Ok(json!({"text":text}))
+        }
+        "recognize" => {
+            let p = checked(argument(a, 1)?)?;
+            // QR only: zbar's linear symbologies misread lines of text as barcodes. Exit 4 means no code.
+            let out = Command::new("zbarimg")
+                .args(["--quiet", "--raw", "-Sdisable", "-Sqrcode.enable"])
+                .arg(&p)
+                .output()?;
+            let (kind, text) = match out.status.code() {
+                Some(0) => ("qr", String::from_utf8(out.stdout)?.trim().to_string()),
+                Some(4) => ("text", ocr(&p)?),
+                _ => {
+                    let e = String::from_utf8_lossy(&out.stderr);
+                    return Err(err(&format!("zbarimg: {}", e.trim())));
+                }
+            };
+            if text.is_empty() {
+                return Ok(json!({"kind":"none","text":""}));
+            }
+            copy_text(text.as_bytes(), "text/plain;charset=utf-8")?;
+            Ok(json!({"kind":kind,"text":text}))
         }
         "export" => {
             let p = checked(argument(a, 1)?)?;
@@ -1089,21 +1237,22 @@ fn dispatch(a: &[String]) -> Result<Value> {
         "project" => {
             let p = checked(argument(a, 1)?)?;
             if p.with_extension("project.json").exists() {
-                let project: Value =
+                let mut project: Value =
                     serde_json::from_slice(&fs::read(p.with_extension("project.json"))?)?;
                 if project["source"]
                     .as_str()
                     .and_then(|s| checked(s).ok())
                     .is_some()
                 {
+                    project["saved"] = json!(true);
                     Ok(project)
                 } else {
                     Ok(
-                        json!({"source":p,"operations":[],"warning":"Original project source missing; restored flattened image"}),
+                        json!({"source":p,"operations":[],"saved":true,"warning":"Original project source missing; restored flattened image"}),
                     )
                 }
             } else {
-                Ok(json!({"source":p,"operations":[]}))
+                Ok(json!({"source":p,"operations":[],"saved":false}))
             }
         }
         "config" => {
@@ -1154,6 +1303,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
                 let sf = session_file(id)?;
                 let _ = fs::remove_file(sf);
                 let _ = fs::remove_file(data().join(format!(".scroll-{id}.png")));
+                let _ = fs::remove_file(data().join(format!(".scroll-last-{id}.png")));
                 Ok(json!({"ok":true}))
             }
             "append" | "finish" => {
@@ -1161,6 +1311,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
                 let sf = session_file(id)?;
                 let state: Value = serde_json::from_slice(&fs::read(&sf)?)?;
                 let frame = data().join(format!(".scroll-{id}.png"));
+                let last_frame = data().join(format!(".scroll-last-{id}.png"));
                 if state["path"].as_str() != Some(frame.to_string_lossy().as_ref()) {
                     return Err(err("Invalid scroll state"));
                 }
@@ -1178,21 +1329,32 @@ fn dispatch(a: &[String]) -> Result<Value> {
                     )?;
                     let first = image::open(&frame)?.to_rgba8();
                     let second = image::open(&next)?.to_rgba8();
-                    let result = if state["axis"] == "horizontal" {
-                        stitch(
-                            &image::imageops::rotate90(&first),
-                            &image::imageops::rotate90(&second),
-                        )
-                        .map(|i| image::imageops::rotate270(&i))
-                    } else {
-                        stitch(&first, &second)
+                    // The first append has no separate previous frame: the capture is that frame.
+                    let last = match image::open(&last_frame) {
+                        Ok(i) => i.to_rgba8(),
+                        Err(_) => first.clone(),
                     };
-                    let _ = fs::remove_file(next);
-                    result?.save(&frame)?;
+                    let residual = state["residual"].as_f64().unwrap_or(0.);
+                    let result = if state["axis"] == "horizontal" {
+                        let r = image::imageops::rotate90;
+                        stitch(&r(&first), &r(&last), &r(&second), residual)
+                            .map(|(i, f)| (image::imageops::rotate270(&i), f))
+                    } else {
+                        stitch(&first, &last, &second, residual)
+                    };
+                    let (image, residual) = result.inspect_err(|_| {
+                        let _ = fs::remove_file(&next);
+                    })?;
+                    image.save(&frame)?;
+                    fs::rename(&next, &last_frame)?;
+                    let mut state = state;
+                    state["residual"] = json!(residual);
+                    fs::write(&sf, serde_json::to_vec(&state)?)?;
                     meta(&frame)
                 } else {
                     let dest = unique("scroll");
                     fs::rename(frame, &dest)?;
+                    let _ = fs::remove_file(last_frame);
                     fs::remove_file(sf)?;
                     meta(&dest)
                 }
@@ -1237,6 +1399,7 @@ mod tests {
         assert!(help.contains("region|repeat|window|active|fullscreen"));
         assert!(help.contains("--horizontal"));
         assert!(help.contains("project IMAGE"));
+        assert!(help.contains("recognize PATH"));
     }
     #[test]
     fn desktop_provider_restores_after_capture_and_hide_errors() {
@@ -1281,6 +1444,8 @@ mod tests {
             assert!(validate_config(&json!({"corners":corners})).is_ok());
         }
         assert!(validate_config(&json!({"corners":"round"})).is_err());
+        assert!(validate_config(&json!({"editor":{"ink":"#ffffff"}})).is_ok());
+        assert!(validate_config(&json!({"editor":"last"})).is_err());
         assert!(validate_config(&json!({"corners":true})).is_err());
         assert!(validate_config(&json!({"delay":3601})).is_err());
         assert!(validate_config(&default_config()).is_ok());
@@ -1312,7 +1477,7 @@ mod tests {
         }
         let a = image::imageops::crop_imm(&full, 0, 0, 120, 200).to_image();
         let b = image::imageops::crop_imm(&full, 0, 100, 120, 200).to_image();
-        assert_eq!(stitch(&a, &b).unwrap(), full);
+        assert_eq!(stitch(&a, &a, &b, 0.).unwrap().0, full);
     }
     #[test]
     fn horizontal_and_duplicate_stitch() {
@@ -1327,13 +1492,58 @@ mod tests {
         }
         let a = image::imageops::crop_imm(&full, 0, 0, 200, 120).to_image();
         let b = image::imageops::crop_imm(&full, 100, 0, 200, 120).to_image();
-        let joined = stitch(
-            &image::imageops::rotate90(&a),
-            &image::imageops::rotate90(&b),
-        )
-        .unwrap();
+        let ra = image::imageops::rotate90(&a);
+        let joined = stitch(&ra, &ra, &image::imageops::rotate90(&b), 0.)
+            .unwrap()
+            .0;
         assert_eq!(image::imageops::rotate270(&joined), full);
-        assert_eq!(stitch(&a, &a).unwrap(), a);
+        assert_eq!(stitch(&a, &a, &a, 0.).unwrap().0, a);
+    }
+    /// Text-like strokes on white with paragraph gaps, where sparse samples match falsely.
+    fn text_page(w: u32, h: u32) -> RgbaImage {
+        let mut img = RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+        let mut seed = 7u32;
+        let mut rand = |n: u32| {
+            seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+            (seed >> 16) % n
+        };
+        let mut y = 10;
+        while y + 14 < h {
+            let (mut x, end) = (20, 60 + rand(w - 80));
+            while x + 6 < end {
+                let stroke = 6 + rand(9);
+                for py in y + 14 - stroke..y + 14 {
+                    for px in x..x + 2 + rand(4) {
+                        img.put_pixel(px, py, image::Rgba([20, 20, 20, 255]));
+                    }
+                }
+                x += 7 + rand(3) * 8;
+            }
+            y += if rand(6) == 0 { 44 } else { 22 };
+        }
+        img
+    }
+    #[test]
+    fn text_stitch_up_and_overshoot() {
+        let full = text_page(300, 1400);
+        let view = |y| image::imageops::crop_imm(&full, 0, y, 300, 200).to_image();
+        let (mut acc, mut last) = (view(0), view(0));
+        for y in [37, 150, 150, 290, 330, 480, 630, 640, 800] {
+            acc = stitch(&acc, &last, &view(y), 0.).unwrap().0;
+            last = view(y);
+        }
+        assert_eq!(
+            acc,
+            image::imageops::crop_imm(&full, 0, 0, 300, 1000).to_image()
+        );
+        let up = stitch(&acc, &last, &view(700), 0.).unwrap_err().to_string();
+        assert!(up.contains("Scrolled back up"), "{up}");
+        assert!(stitch(&acc, &last, &view(1150), 0.).is_err());
+        // A tolerant match still lands on the true offset when every pixel shifts slightly.
+        let mut soft = view(900);
+        soft.pixels_mut()
+            .for_each(|p| p[0] = p[0].saturating_sub(6));
+        assert_eq!(stitch(&acc, &last, &soft, 0.).unwrap().0.height(), 1100);
     }
     #[test]
     fn opaque_redaction() {

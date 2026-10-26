@@ -8,8 +8,9 @@ timeout and its output in a log file, and reports PASS/FAIL/BLOCKED/SKIP. Exits 
   scripts/verify.py --shell         add real omarchy-shell checks (installed plugin must match this tree)
   scripts/verify.py CHECK...        only the named checks or groups;  --list shows them
   --no-live  skip live Wayland checks (reported, never a full pass)   --keep  keep logs on success   --why  explain selection
-  --serial   run one check at a time (default: offscreen checks in parallel with the serial live lane, timing gates last)
-  --desktop  run live checks on your visible desktop (default: a hidden headless Hyprland, so you can keep working)
+  --serial   run one check at a time (default: builds, offscreen checks and live sessions in parallel, timing gates last)
+  --jobs N   offscreen checks at once (default: CPU count, at most 8)   --sessions N  hidden live sessions (default 3)
+  --desktop  run live checks on your visible desktop, one at a time (default: hidden headless Hyprlands, so you can keep working)
 See .agents/skills/verify-project/SKILL.md."""
 import concurrent.futures as cf,json,os,pathlib,re,shutil,signal,subprocess,sys,tempfile,threading,time
 root=pathlib.Path(__file__).resolve().parents[1]
@@ -22,23 +23,27 @@ CHECKS={
  'cargo-test':('static',['cargo','test','--locked'],['magick'],[],600),
  'py-compile':('static',['sh','-c','python3 -m py_compile scripts/*.py tests/*.py'],[],[],60),
  'manifest':('static',['sh','-c','jq -e \'.id == "omashot" and (.entryPoints.overlay | length > 0)\' plugin/manifest.json >/dev/null && c=$(cargo metadata --no-deps --format-version 1 | jq -r ".packages[0].version") && m=$(jq -r .version plugin/manifest.json) && echo "Cargo $c manifest $m" && test "$c" = "$m"'],['jq'],[],60),
- 'qmldir':('static',['sh','-c','cd plugin && for f in *.qml; do case $f in ShellPalette.qml|shell.qml|WindowCapture.qml) continue;; esac; grep -q " $f$" qmldir || { echo "$f missing from plugin/qmldir"; exit 1; }; done; echo all listed'],[],[],10),
+ 'qmldir':('static',['sh','-c','cd plugin && for f in *.qml; do case $f in BarWidget.qml|ShellPalette.qml|shell.qml|WindowCapture.qml) continue;; esac; grep -q " $f$" qmldir || { echo "$f missing from plugin/qmldir"; exit 1; }; done; echo all listed'],[],[],10),
  'plugin-validate':('static',['omarchy','plugin','validate','./plugin'],['omarchy'],[],60),
+ 'verify-runner':('headless',py('verify-runner'),[],[],60),
  'install':('headless',['bash','tests/install.sh'],[],[],120),
  'render-regression':('headless',py('render-regression'),['magick'],['debug'],300),
  'render-golden':('headless',py('render-golden'),['magick'],['debug'],300),
- 'history-service':('headless',py('history-service'),[],['debug'],120),
+ 'history-service':('headless',py('history-service'),['magick'],['debug'],120),
+ 'scroll-stitch':('headless',py('scroll-stitch'),[],['debug'],120),
+ 'keybindings':('headless',py('keybindings'),[],['debug'],60),
  'editor-events':('headless',py('editor-events-smoke'),['qs'],['debug'],180),
  'editor-objects':('headless',py('editor-objects-smoke'),['qs'],['debug'],180),
  'editor-narrow':('headless',py('editor-narrow-smoke'),['qs'],['debug'],120),
  'editor-background':('headless',py('editor-background-smoke'),['qs','magick'],['release'],180),
  'editor-live':('headless',py('editor-live-smoke'),['qs'],['debug'],180),
  'theme-smoke':('headless',py('theme-smoke'),['qs'],[],120),
- 'render-identity':('identity',py('render-identity'),['magick','git'],['release'],900),
+ 'render-identity':('identity',py('render-identity','-j','4'),['magick','git'],['release'],900),
  'ui-smoke':('live',py('ui-smoke'),['wayland','qs','magick'],['debug'],300),
  'capture-selector':('live',py('capture-selector-smoke'),['wayland','qs','magick'],['release'],180),
  'capture-flow':('live',py('capture-flow-smoke'),['wayland','qs','magick'],['release'],300),
  'isolated-window':('live',py('isolated-window-smoke'),['wayland','qs','magick'],['debug'],120),
+ 'keybindings-live':('live',py('keybindings-live'),['wayland','qs','Hyprland'],['debug'],120),
  'scroll':('live',py('scroll-smoke'),['wayland','qs','magick'],['release'],180),
  'theme-live':('live',py('theme-live-smoke'),['wayland','qs'],['debug'],180),
  'live-scene-fidelity':('live',py('live-scene-fidelity'),['wayland','qs','magick'],['debug'],300),
@@ -127,10 +132,12 @@ class Nested:
  is headless (mirroring the focused monitor's mode and scale), so live checks never show windows, take focus, move the
  real pointer or touch the real clipboard."""
  def __init__(self,dir):self.dir=dir;self.proc=None;self.env=None
+ ruled=threading.Lock();hidden=False
  def start(self):
-  mon=next(m for m in json.loads(subprocess.check_output(['hyprctl','-j','monitors'],text=True)) if m['focused'])
+  self.dir.mkdir(exist_ok=True);mon=next(m for m in json.loads(subprocess.check_output(['hyprctl','-j','monitors'],text=True)) if m['focused'])
   # Runtime-only rule in the outer compositor (gone on the next config reload); aquamarine is the nested window's class.
-  subprocess.run(['hyprctl','eval','hl.window_rule({ match = { class = "^aquamarine$" }, workspace = "special:omashot-verify silent" })'],capture_output=True,timeout=5)
+  with Nested.ruled:
+   if not Nested.hidden:Nested.hidden=True;subprocess.run(['hyprctl','eval','hl.window_rule({ match = { class = "^aquamarine$" }, workspace = "special:omashot-verify silent" })'],capture_output=True,timeout=5)
   conf=self.dir/'nested-hyprland.conf'
   conf.write_text(f"monitor = , {mon['width']}x{mon['height']}@{mon['refreshRate']:.2f}, 0x0, {mon['scale']}\n"
    'animations {\n enabled = false\n}\nmisc {\n disable_hyprland_logo = true\n disable_splash_rendering = true\n}\necosystem {\n no_update_news = true\n no_donation_nag = true\n}\n')
@@ -169,6 +176,8 @@ def kill(p):
  except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait()
  except ProcessLookupError:pass
 def run(cmd,log,timeout,env=None):
+ # Bound each ImageMagick process: nested test pools otherwise multiply its CPU-wide thread pool.
+ env=dict(os.environ,**(env or {}));env.setdefault('MAGICK_THREAD_LIMIT','1')
  # Output goes to a file, never a pipe: a wl-copy daemon spawned by a test would inherit the pipe and hang the run.
  with log.open('wb') as out:
   p=subprocess.Popen(cmd,cwd=root,env=env,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,start_new_session=True);RUNNING.add(p)
@@ -177,9 +186,16 @@ def run(cmd,log,timeout,env=None):
   finally:RUNNING.discard(p)
 def main(argv):
  flags={a for a in argv if a.startswith('--')};names=[a for a in argv if not a.startswith('-')]
- base=argv[argv.index('--base')+1] if '--base' in argv else None
- if base:names.remove(base)
- unknown=flags-{'--full','--shell','--no-live','--keep','--why','--list','--base','--help','--serial','--desktop'}
+ try:
+  base=argv[argv.index('--base')+1] if '--base' in argv else None
+  if base:names.remove(base)
+  opt=lambda f,d:int(argv[argv.index(f)+1]) if f in argv else d
+  jobs,sessions=opt('--jobs',min(os.cpu_count() or 4,8)),opt('--sessions',3)
+  for f in ('--jobs','--sessions'):
+   if f in argv:names.remove(argv[argv.index(f)+1])
+  if jobs<1 or sessions<1:raise ValueError('--jobs and --sessions must be positive integers')
+ except (IndexError,ValueError) as e:print(f'Invalid option: {e}');return 2
+ unknown=flags-{'--full','--shell','--no-live','--keep','--why','--list','--base','--help','--serial','--desktop','--jobs','--sessions'}
  if '--help' in flags or '-h' in argv or unknown:print(__doc__+(f'\nUnknown option(s): {", ".join(sorted(unknown))}' if unknown else ''));return 2 if unknown else 0
  if '--list' in flags:
   for g,ids in GROUPS.items():print(f'{g}: '+' '.join(ids))
@@ -198,54 +214,80 @@ def main(argv):
  logs=pathlib.Path(tempfile.mkdtemp(prefix=time.strftime('omashot-verify-%Y%m%d-%H%M%S-')));results=[]
  print(f'Selected ({scope}): '+' '.join(selected)+f'\nLogs: {logs}')
  builds=[b for b in ['debug','release'] if any(b in CHECKS[c][3] for c in selected if c not in skipped)]
- for b in builds:
-  t=time.monotonic();code=run(['cargo','build','--locked']+(['--release'] if b=='release' else []),logs/f'build-{b}.log',900)
-  results.append((f'build-{b}','PASS' if code==0 else 'FAIL',time.monotonic()-t,'' if code==0 else f'exit {code}'))
-  print(f'{results[-1][1]:7} {results[-1][0]:20} {results[-1][2]:6.1f}s',flush=True)
- built=all(r[1]=='PASS' for r in results);clip=None;shell_before=shell_instance() if '--shell' in flags else None;lock=threading.Lock()
- def check(c):
-  group,cmd,req,bins,timeout=CHECKS[c];log=logs/f'{c}.log';t=time.monotonic()
+ ready={b:threading.Event() for b in builds};lock=threading.Lock();clip=None;shell_before=shell_instance() if '--shell' in flags else None
+ def report(r):
+  with lock:results.append(r);print(f'{r[1]:7} {r[0]:20} {r[2]:6.1f}s  {r[3]}'.rstrip(),flush=True)
+ def build(b):
+  # debug and release lock separate target dirs, so they build side by side; checks wait only for the binary they use.
+  t=time.monotonic()
+  try:code=run(['cargo','build','--locked']+(['--release'] if b=='release' else []),logs/f'build-{b}.log',900)
+  except BaseException:code='interrupted';raise
+  finally:report((f'build-{b}','PASS' if code==0 else 'FAIL',time.monotonic()-t,'' if code==0 else f'exit {code}'));ready[b].set()
+ def check(c,env=None):
+  group,cmd,req,bins,timeout=CHECKS[c];log=logs/f'{c}.log';env=env if group=='live' else None
+  for b in bins:
+   if b in ready:ready[b].wait()
+  t=time.monotonic()
   if c in skipped:r=(c,'SKIP',0,'--no-live')
   elif STOP.is_set():r=(c,'SKIP',0,'interrupted')
-  elif need:=missing(req,nested.env if nested and group=='live' else None):r=(c,'BLOCKED',0,'missing '+', '.join(need))
-  elif bins and not built:r=(c,'BLOCKED',0,'build failed')
+  elif need:=missing(req,env):r=(c,'BLOCKED',0,'missing '+', '.join(need))
+  elif any((f'build-{b}','PASS')!=next((x[:2] for x in results if x[0]==f'build-{b}'),None) for b in bins):r=(c,'BLOCKED',0,'build failed')
   else:
-   code=(0 if shell_current(log) else 1) if cmd is None else run(cmd,log,timeout,nested.env if nested and group=='live' else None)
+   code=(0 if shell_current(log) else 1) if cmd is None else run(cmd,log,timeout,env)
    tail=[l for l in log.read_text(errors='replace').splitlines() if l.strip()][-1:] if log.exists() else []
    r=(c,'PASS' if code==0 else 'FAIL',time.monotonic()-t,'' if code==0 else (f'{code}: ' if code=='timeout' else f'exit {code}: ')+(tail[0][:160] if tail else ''))
-  with lock:results.append(r);print(f'{r[1]:7} {c:20} {r[2]:6.1f}s  {r[3]}',flush=True)
- def lane(ids):
-  for c in ids:check(c)
- runnable=[c for c in selected if c not in skipped];nested=None
- if '--desktop' not in flags and any(CHECKS[c][0]=='live' for c in runnable) and not missing(['wayland']) and shutil.which('Hyprland'):
-  nested=Nested(logs)
-  try:nested.start();print('Live checks run in a hidden headless Hyprland (--desktop to use your screen)')
-  except Exception as e:nested.stop();nested.env={};results.append(('nested-session','FAIL',0,str(e)));print(f'FAIL    nested-session        {e}')  # live checks then report BLOCKED, never fall back to the desktop
- # Shell checks still use the real desktop clipboard; the nested session has its own.
- if any(c in ('ui-smoke','capture-flow') for c in runnable) and nested is None and not missing(['wayland']):clip=Clipboard(logs);clip.save()
- live=[c for c in selected if CHECKS[c][0] in ('live','shell') and c not in TIMED];timed=[c for c in selected if c in TIMED]
- offscreen=[c for c in selected if c not in live and c not in timed]
+  report(r)
+ for c in skipped:report((c,'SKIP',0,'--no-live'))
+ runnable=[c for c in selected if c not in skipped]
+ live=[c for c in runnable if CHECKS[c][0]=='live' and c not in TIMED];timed=[c for c in runnable if c in TIMED]
+ shells=[c for c in runnable if CHECKS[c][0]=='shell' and c not in TIMED];offscreen=[c for c in runnable if CHECKS[c][0] not in ('live','shell')]
+ # Each nested Hyprland has its own focus, pointer and clipboard, so live checks run in parallel, one per session.
+ nested=[];want=max(min(sessions,len(live)),1 if any(CHECKS[c][0]=='live' for c in runnable) else 0)
+ if '--desktop' not in flags and want and not missing(['wayland']) and shutil.which('Hyprland'):nested=[Nested(logs/f'nested-{i}') for i in range(want)]
+ # On the real desktop (and for shell checks) the clipboard is shared: save it, and run those checks one at a time.
+ if any(c in ('ui-smoke','capture-flow') for c in runnable) and not nested and not missing(['wayland']):clip=Clipboard(logs);clip.save()
+ def session(n):
+  if n.env is None:
+   try:n.start()
+   except Exception as e:n.stop();n.env={};report((n.dir.name,'FAIL',0,str(e)))  # its checks report BLOCKED, never fall back to the desktop
+  return n.env
+ queue=sorted(live,key=lambda c:-CHECKS[c][4]);qlock=threading.Lock()
+ def worker(n):
+  env=session(n)
+  while True:
+   with qlock:
+    if not queue:return
+    c=queue.pop(0)
+   check(c,env)
+ def lane(ids,env=None):
+  for c in ids:check(c,env)
+ if nested:print(f'Live checks run in {len(nested)} hidden headless Hyprland session(s) (--desktop to use your screen)')
  try:
-  if '--serial' in flags:lane(selected)
+  if '--serial' in flags:
+   for b in builds:build(b)
+   timed_env=session(nested[0]) if nested else None;lane(offscreen);lane(live+shells,timed_env)
   else:
-   # Offscreen checks in a pool next to the serial live lane; timing gates afterwards, with the machine otherwise idle.
-   lanes=[[c for c in offscreen if c in CARGO]]+[[c] for c in offscreen if c not in CARGO]+[live]
-   with cf.ThreadPoolExecutor(5) as ex:
-    futures=[ex.submit(lane,l) for l in sorted(lanes,key=lambda l:l!=live) if l]
+   # Builds, offscreen checks (longest first, cargo checks in one lane for cargo's build lock) and the live sessions all at
+   # once; the timing gates run afterwards, alone, so load can't skew them.
+   cargo=[c for c in offscreen if c in CARGO];rest=sorted([c for c in offscreen if c not in CARGO],key=lambda c:-CHECKS[c][4])
+   lanes=[(build,b) for b in builds]+([(lane,cargo)] if cargo else [])+[(worker,n) for n in nested]+([(lane,live+shells)] if live and not nested else [(lane,shells)] if shells else [])
+   with cf.ThreadPoolExecutor(max(1,len(lanes))) as ex,cf.ThreadPoolExecutor(jobs) as pool:
+    futures=[ex.submit(*l) for l in lanes]+[pool.submit(check,c) for c in rest]
     try:
      for f in futures:f.result()
     except KeyboardInterrupt:
-     STOP.set();[kill(p) for p in list(RUNNING)];ex.shutdown(cancel_futures=True);raise
-   lane(timed)
+     STOP.set();[kill(p) for p in list(RUNNING)];pool.shutdown(cancel_futures=True);ex.shutdown(cancel_futures=True);raise
+   timed_env=session(nested[0]) if nested else None
+  for c in timed:check(c,timed_env if CHECKS[c][0]=='live' else None)
  except KeyboardInterrupt:STOP.set();[kill(p) for p in list(RUNNING)];results.append(('interrupted','FAIL',0,'SIGINT/SIGTERM'));print('Interrupted')
  finally:
   if clip:clip.restore()
-  if nested:nested.stop()
+  for n in nested:n.stop()
  order={c:i for i,c in enumerate([r[0] for r in results if r[0].startswith('build-')]+selected)};results.sort(key=lambda r:order.get(r[0],len(order)))
  if shell_before and shell_instance()!=shell_before:
   results.append(('shell-stable','FAIL',0,f'omarchy-shell restarted during the run ({shell_before} -> {shell_instance()}); another session? rerun'));print(f'FAIL    shell-stable          {results[-1][3]}')
  counts={s:sum(r[1]==s for r in results) for s in ['PASS','FAIL','BLOCKED','SKIP']}
- ok=counts['PASS']==len(results)
+ ok=counts['PASS']==len(results) and set(selected)<={r[0] for r in results}
  (logs/'summary.json').write_text(json.dumps({'scope':scope,'head':git('rev-parse','--short','HEAD').strip(),'results':[dict(zip(['check','status','seconds','detail'],r)) for r in results]},indent=1))
  print(f'\n{"PASS" if ok else "NOT PASSED"}: '+', '.join(f'{v} {k.lower()}' for k,v in counts.items() if v)+f' ({scope} scope)')
  if ok and scope!='full':print('This is a selected subset, not full verification.')

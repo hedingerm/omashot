@@ -3,10 +3,10 @@ set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 test_home=$(mktemp -d)
 trap 'rm -rf -- "$test_home"' EXIT
-export HOME="$test_home" XDG_DATA_HOME="$test_home/.local/share"
+export HOME="$test_home" XDG_DATA_HOME="$test_home/.local/share" XDG_CONFIG_HOME="$test_home/.config"
 mkdir -p "$HOME/.config/omarchy"
 cat > "$HOME/.config/omarchy/shell.json" <<'JSON'
-{"version":1,"idle":{"lock":987},"bar":{"position":"bottom"},"plugins":[{"id":"example.other","setting":42}]}
+{"version":1,"idle":{"lock":987},"bar":{"position":"bottom","layout":{"right":[{"id":"omarchy.audio"}]}},"plugins":[{"id":"example.other","setting":42}]}
 JSON
 printf '#!/bin/sh\necho test-backend\n' > "$test_home/backend"
 chmod +x "$test_home/backend"
@@ -21,6 +21,17 @@ assert c['plugins']==[{'id':'example.other','setting':42},{'id':'omashot'}]
 assert len(list((h/'.config/omarchy').glob('shell.json.omashot-backup-*')))==2
 assert (h/'.local/bin/omashot').stat().st_mode & 0o111
 assert (h/'.config/omarchy/plugins/omashot/manifest.json').is_file()
+assert c['bar']['layout']['right']==[{'id':'omashot'},{'id':'omarchy.audio'}]
+c['bar']['layout']['right']=[{'id':'omarchy.audio'}]
+(h/'.config/omarchy/shell.json').write_text(json.dumps(c))
+PY
+# A bar icon the user removed stays removed on updates.
+"$repo/scripts/install.sh" --binary "$test_home/backend" --no-reload
+python3 - <<'PY'
+import json, pathlib
+p=pathlib.Path.home()/'.config/omarchy/shell.json';c=json.loads(p.read_text())
+assert c['bar']['layout']['right']==[{'id':'omarchy.audio'}]
+c['bar']['layout']['right'].append('omashot');p.write_text(json.dumps(c))
 PY
 # Added QML types must restart the cached host once; an ordinary update only rescans.
 mkdir -p "$test_home/update-bin"
@@ -71,12 +82,17 @@ printf 'capture' > "$XDG_DATA_HOME/omashot/capture.png"
 printf 'custom' > "$HOME/.config/omarchy/plugins/omashot/user-note.txt"
 printf '\n// local edit\n' >> "$HOME/.config/omarchy/plugins/omashot/Main.qml"
 if "$repo/scripts/install.sh" --binary "$test_home/backend" --no-reload; then echo 'FAIL: overwrite of local edit accepted' >&2; exit 1; fi
+# Uninstall removes only the shortcut block OmaShot Preferences added to hypr/bindings.lua.
+mkdir -p "$HOME/.config/hypr"
+printf -- '-- mine\no.bind("SUPER + B", "Browser", "chromium")\n\n-- BEGIN OMASHOT (managed by OmaShot Preferences)\npcall(dofile, "%s")\n-- END OMASHOT\n' "$HOME/.config/omashot/hyprland-bindings.lua" > "$HOME/.config/hypr/bindings.lua"
 "$repo/scripts/uninstall.sh" --no-reload
+[[ $(cat "$HOME/.config/hypr/bindings.lua") == $'-- mine\no.bind("SUPER + B", "Browser", "chromium")' ]]
 python3 - <<'PY'
 import json, pathlib
 h=pathlib.Path.home()
 c=json.loads((h/'.config/omarchy/shell.json').read_text())
 assert c['plugins']==[{'id':'example.other','setting':42}]
+assert c['bar']['layout']['right']==[{'id':'omarchy.audio'}]
 assert c['idle']['lock']==987 and c['bar']['position']=='bottom'
 assert not (h/'.local/bin/omashot').exists()
 assert not (h/'.local/bin/omashot-ui').exists()
@@ -118,6 +134,10 @@ grep -Eq '^host omashot capture fullscreen$' "$TEST_LOG"
 [[ $(grep -Ec '^host omashot status$' "$TEST_LOG") == 2 ]]
 "$repo/scripts/omashot-ui" history
 grep -Eq '^host omashot history$' "$TEST_LOG"
+"$repo/scripts/omashot-ui" preferences
+grep -Eq '^host omashot preferences$' "$TEST_LOG"
+"$repo/scripts/omashot-ui" scroll
+grep -Eq '^host omashot capture scroll$' "$TEST_LOG"
 export TEST_HOST=unknown
 "$repo/scripts/omashot-ui" region
 grep -Eq 'standalone ipc -p .*/plugin call omashot capture region$' "$TEST_LOG"

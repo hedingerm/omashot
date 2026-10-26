@@ -54,6 +54,92 @@ Rectangle {
     property var undoStack: []
     property var undone: []
     property var customPresets: []
+    // Last-used tool options and background, kept in config as `editor` and restored on every new edit.
+    property var savedSettings: null
+    property string lastTool: "select"
+    property var lastBackground: null
+    property bool applyingSettings: false
+    readonly property var tools: ["select", "rectangle", "filled", "ellipse", "line", "arrow", "text", "step", "freehand", "highlight", "spotlight", "pixelate"]
+    readonly property var textStyles: ["standard", "rounded", "monospaced", "outlined", "boxed", "rounded_boxed", "monospaced_boxed"]
+    readonly property var cropRatios: ["Freeform", "1:1", "4:3", "16:9", "9:16"]
+    readonly property var cropFills: ["#00000000", "#ffffff", "#808080", "#000000"]
+    signal settingsUsed(var settings)
+    onLastToolChanged: remember()
+    onInkChanged: remember()
+    onStrokeWidthChanged: remember()
+    onTextSizeChanged: remember()
+    onTextStyleChanged: remember()
+    onRedactionModeChanged: remember()
+    onRedactionStrengthChanged: remember()
+    onCropRatioChanged: remember()
+    onCropFillChanged: remember()
+    onSidebarVisibleChanged: remember()
+    function remember() {
+        if (initialized && !applyingSettings)
+            settingsTimer.restart();
+    }
+    Timer {
+        id: settingsTimer
+        interval: 400
+        onTriggered: root.settingsUsed({
+            tool: root.lastTool,
+            ink: root.ink,
+            stroke_width: root.strokeWidth,
+            text_size: root.textSize,
+            text_style: root.textStyle,
+            redaction_mode: root.redactionMode,
+            redaction_strength: root.redactionStrength,
+            crop_ratio: root.cropRatio,
+            crop_fill: root.cropFill,
+            sidebar_visible: root.sidebarVisible,
+            background: root.lastBackground
+        })
+    }
+    function applySettings() {
+        if (settingsTimer.running) {
+            settingsTimer.stop();
+            settingsTimer.triggered();
+        }
+        var s = savedSettings;
+        if (!s || typeof s !== "object")
+            return;
+        var color = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+        var number = function (v, lo, hi) {
+            return typeof v === "number" && v >= lo && v <= hi;
+        };
+        applyingSettings = true;
+        if (tools.indexOf(s.tool) >= 0)
+            tool = lastTool = s.tool;
+        if (color.test(s.ink || ""))
+            ink = s.ink;
+        if (number(s.stroke_width, 1, 30))
+            strokeWidth = s.stroke_width;
+        if (number(s.text_size, 10, 144))
+            textSize = Math.round(s.text_size);
+        if (textStyles.indexOf(s.text_style) >= 0)
+            textStyle = s.text_style;
+        if (["pixelate", "blur", "redact"].indexOf(s.redaction_mode) >= 0)
+            redactionMode = s.redaction_mode;
+        if (number(s.redaction_strength, 2, 60))
+            redactionStrength = Math.round(s.redaction_strength);
+        if (cropRatios.indexOf(s.crop_ratio) >= 0)
+            cropRatio = s.crop_ratio;
+        if (color.test(s.crop_fill || ""))
+            cropFill = s.crop_fill;
+        if (typeof s.sidebar_visible === "boolean")
+            sidebarVisible = s.sidebar_visible;
+        lastBackground = s.background && s.background.type === "background" ? s.background : null;
+        applyingSettings = false;
+    }
+    // A fresh capture starts with the last-used background; wallpapers removed from the library since are skipped.
+    function rememberedBackground() {
+        var bg = lastBackground;
+        if (!bg || ((bg.mode === "wallpaper" || bg.image_path) && !backgroundPanel.wallpapers.some(function (w) {
+            return w.path === bg.image_path;
+        })))
+            return null;
+        return Object.assign({}, bg);
+    }
     property var localPresets: customPresets
     onCustomPresetsChanged: localPresets = customPresets
     property string status: "Choose a tool, then draw on your screenshot"
@@ -289,7 +375,8 @@ Rectangle {
 
         savePending = false;
         backgroundPanel.restore(null);
-        status = "Choose a tool, then draw on your screenshot";
+        applySettings();
+        status = tool === "select" ? "Choose a tool, then draw on your screenshot" : "Draw " + tool + " on the screenshot";
         loadProject();
     }
     function selectAt(x, y) {
@@ -625,10 +712,12 @@ Rectangle {
                 root.loadProject();
                 return;
             }
+            var restored = false;
             if (code === 0) {
                 try {
                     var project = JSON.parse(root.projectOutput);
                     if (project.source && Array.isArray(project.operations)) {
+                        restored = project.saved === true || project.operations.length > 0;
                         root.basePath = project.source;
                         root.operations = project.operations;
                         root.undone = [];
@@ -641,6 +730,12 @@ Rectangle {
                 } catch (e) {
                     root.status = "Could not restore edits: " + e;
                 }
+            }
+            var bg = restored || root.operations.length ? null : root.rememberedBackground();
+            if (bg) {
+                root.operations = [bg];
+                root.undoStack = [[]];
+                root.syncBackground();
             }
             root.previewTimerStart();
         }
@@ -1022,7 +1117,8 @@ Rectangle {
                         color: Theme.accent
                     }
                     ComboBox {
-                        model: ["Freeform", "1:1", "4:3", "16:9", "9:16"]
+                        model: root.cropRatios
+                        currentIndex: model.indexOf(root.cropRatio)
                         implicitWidth: 116
                         onActivated: function (index) {
                             root.cropRatio = model[index];
@@ -1084,12 +1180,13 @@ Rectangle {
                     }
                     ComboBox {
                         model: ["Transparent", "White", "Gray", "Black", "Custom color…"]
+                        currentIndex: root.cropFills.indexOf(root.cropFill) >= 0 ? root.cropFills.indexOf(root.cropFill) : 4
                         implicitWidth: 110
                         onActivated: function (index) {
                             if (index === 4)
                                 cropColorDialog.open();
                             else
-                                root.cropFill = ["#00000000", "#ffffff", "#808080", "#000000"][index];
+                                root.cropFill = root.cropFills[index];
                         }
                     }
                     Item {
@@ -1218,7 +1315,7 @@ Rectangle {
                         Layout.preferredHeight: 38
                         spacing: 2
                         Repeater {
-                            model: ["select", "rectangle", "filled", "ellipse", "line", "arrow", "text", "step", "freehand", "highlight", "spotlight", "pixelate"]
+                            model: root.tools
                             IconButton {
                                 required property string modelData
                                 iconName: modelData
@@ -1230,6 +1327,7 @@ Rectangle {
                                 onClicked: {
                                     root.finishText(true);
                                     root.tool = modelData;
+                                    root.lastTool = modelData;
                                     root.selectedIndex = -1;
                                     root.status = modelData === "select" ? "Select and drag annotations; double-click text to edit" : "Draw " + modelData + " on the screenshot";
                                 }
@@ -1324,6 +1422,8 @@ Rectangle {
                 customPresets: root.localPresets
                 enabled: !root.busy
                 onChanged: function (operation) {
+                    root.lastBackground = operation ? Object.assign({}, operation) : null;
+                    root.remember();
                     root.updateBackground(operation);
                 }
                 onPresetsChanged: function (presets) {
