@@ -7,9 +7,9 @@ if [[ ! -f $plugin/shell.qml ]]; then
 fi
 mode=${1:-open}
 case $mode in
-  open|history) ;;
-  region|window|fullscreen|repeat|active|text|ocr|qr) ;;
-  *) echo 'Usage: omashot-ui [open|history|region|window|fullscreen|repeat|active|text]' >&2; exit 2 ;;
+  open|history|preferences) ;;
+  region|window|fullscreen|repeat|active|scroll|text|ocr|qr) ;;
+  *) echo 'Usage: omashot-ui [open|history|preferences|region|window|fullscreen|repeat|active|scroll|text|ocr|qr]' >&2; exit 2 ;;
 esac
 if command -v omarchy-shell >/dev/null && [[ $(omarchy-shell shell summon omashot '{}' 2>/dev/null || true) == ok ]]; then
   ready=0
@@ -20,16 +20,16 @@ if command -v omarchy-shell >/dev/null && [[ $(omarchy-shell shell summon omasho
   done
   if (( ! ready )); then echo 'OmaShot was summoned but its command handler did not become ready.' >&2; exit 1; fi
   case $mode in
-    history) exec omarchy-shell omashot history ;;
-    region|window|fullscreen|repeat|active|text|ocr|qr) exec omarchy-shell omashot capture "$mode" ;;
+    history|preferences) exec omarchy-shell omashot "$mode" ;;
+    region|window|fullscreen|repeat|active|scroll|text|ocr|qr) exec omarchy-shell omashot capture "$mode" ;;
     *) exit 0 ;;
   esac
 fi
 # A standalone shell has its own IPC endpoint. Reuse it if already running.
 if qs ipc -p "$plugin" call omashot open >/dev/null 2>&1; then
   case $mode in
-    history) exec qs ipc -p "$plugin" call omashot history ;;
-    region|window|fullscreen|repeat|active|text|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
+    history|preferences) exec qs ipc -p "$plugin" call omashot "$mode" ;;
+    region|window|fullscreen|repeat|active|scroll|text|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
     *) exit 0 ;;
   esac
 fi
@@ -39,8 +39,8 @@ qs_pid=$!
 for ((attempt=0; attempt<40; attempt++)); do
   if qs ipc -p "$plugin" call omashot open >/dev/null 2>&1; then
     case $mode in
-      history) exec qs ipc -p "$plugin" call omashot history ;;
-      region|window|fullscreen|repeat|active|text|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
+      history|preferences) exec qs ipc -p "$plugin" call omashot "$mode" ;;
+      region|window|fullscreen|repeat|active|scroll|text|ocr|qr) exec qs ipc -p "$plugin" call omashot capture "$mode" ;;
       *) exit 0 ;;
     esac
   fi

@@ -6,7 +6,7 @@ trap 'rm -rf -- "$test_home"' EXIT
 export HOME="$test_home" XDG_DATA_HOME="$test_home/.local/share"
 mkdir -p "$HOME/.config/omarchy"
 cat > "$HOME/.config/omarchy/shell.json" <<'JSON'
-{"version":1,"idle":{"lock":987},"bar":{"position":"bottom"},"plugins":[{"id":"example.other","setting":42}]}
+{"version":1,"idle":{"lock":987},"bar":{"position":"bottom","layout":{"right":[{"id":"omarchy.audio"}]}},"plugins":[{"id":"example.other","setting":42}]}
 JSON
 printf '#!/bin/sh\necho test-backend\n' > "$test_home/backend"
 chmod +x "$test_home/backend"
@@ -21,6 +21,17 @@ assert c['plugins']==[{'id':'example.other','setting':42},{'id':'omashot'}]
 assert len(list((h/'.config/omarchy').glob('shell.json.omashot-backup-*')))==2
 assert (h/'.local/bin/omashot').stat().st_mode & 0o111
 assert (h/'.config/omarchy/plugins/omashot/manifest.json').is_file()
+assert c['bar']['layout']['right']==[{'id':'omashot'},{'id':'omarchy.audio'}]
+c['bar']['layout']['right']=[{'id':'omarchy.audio'}]
+(h/'.config/omarchy/shell.json').write_text(json.dumps(c))
+PY
+# A bar icon the user removed stays removed on updates.
+"$repo/scripts/install.sh" --binary "$test_home/backend" --no-reload
+python3 - <<'PY'
+import json, pathlib
+p=pathlib.Path.home()/'.config/omarchy/shell.json';c=json.loads(p.read_text())
+assert c['bar']['layout']['right']==[{'id':'omarchy.audio'}]
+c['bar']['layout']['right'].append('omashot');p.write_text(json.dumps(c))
 PY
 # Added QML types must restart the cached host once; an ordinary update only rescans.
 mkdir -p "$test_home/update-bin"
@@ -77,6 +88,7 @@ import json, pathlib
 h=pathlib.Path.home()
 c=json.loads((h/'.config/omarchy/shell.json').read_text())
 assert c['plugins']==[{'id':'example.other','setting':42}]
+assert c['bar']['layout']['right']==[{'id':'omarchy.audio'}]
 assert c['idle']['lock']==987 and c['bar']['position']=='bottom'
 assert not (h/'.local/bin/omashot').exists()
 assert not (h/'.local/bin/omashot-ui').exists()
@@ -118,6 +130,10 @@ grep -Eq '^host omashot capture fullscreen$' "$TEST_LOG"
 [[ $(grep -Ec '^host omashot status$' "$TEST_LOG") == 2 ]]
 "$repo/scripts/omashot-ui" history
 grep -Eq '^host omashot history$' "$TEST_LOG"
+"$repo/scripts/omashot-ui" preferences
+grep -Eq '^host omashot preferences$' "$TEST_LOG"
+"$repo/scripts/omashot-ui" scroll
+grep -Eq '^host omashot capture scroll$' "$TEST_LOG"
 export TEST_HOST=unknown
 "$repo/scripts/omashot-ui" region
 grep -Eq 'standalone ipc -p .*/plugin call omashot capture region$' "$TEST_LOG"

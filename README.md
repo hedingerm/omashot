@@ -131,7 +131,7 @@ cd omashot
 omashot-ui
 ```
 
-The installer builds the release binary, puts `omashot` and `omashot-ui` in `~/.local/bin` (make sure it's on your `PATH`), installs the plugin into `~/.config/omarchy/plugins/omashot`, adds a desktop launcher and icons, and registers the plugin in `shell.json` (backing it up first).
+The installer builds the release binary, puts `omashot` and `omashot-ui` in `~/.local/bin` (make sure it's on your `PATH`), installs the plugin into `~/.config/omarchy/plugins/omashot`, adds a desktop launcher and icons, registers the plugin in `shell.json` (backing it up first) and adds the OmaShot icon to the bar.
 
 > [!NOTE]
 > OmaShot ships a native backend, so install it with `scripts/install.sh` rather than `omarchy plugin add`. To use a prebuilt binary, run `./scripts/install.sh --binary PATH`.
@@ -156,8 +156,16 @@ Open the launcher with `omashot-ui`, or go straight to a mode:
 | `omashot-ui active` | Capture the focused window |
 | `omashot-ui fullscreen` | Capture the whole screen |
 | `omashot-ui repeat` | Capture the last area again |
+| `omashot-ui scroll` | Select an area and start a scrolling capture |
 | `omashot-ui history` | Browse previous captures |
+| `omashot-ui preferences` | Open Preferences |
 | `omashot-ui text` | Select an area and copy its QR code or, if it has none, its text (`ocr` and `qr` force one) |
+
+### Bar icon
+
+OmaShot runs inside the Omarchy shell, which Hyprland starts at login, so there is nothing extra to autostart. Retention cleanup runs in the background from the start; the launcher loads on first use and stays loaded.
+
+The installer adds an OmaShot icon to the right side of the Omarchy bar once. Left-click opens the launcher, middle-click captures an area, and right-click opens a menu with every capture mode, history and editor, and Preferences. The menu shows the Hyprland binding next to each entry that has one. If you remove the icon, updates leave it out. To bring it back, run `omarchy-shell shell putBarWidget omashot '{"section":"right"}'`. Removing the icon does not stop OmaShot.
 
 ### Keybindings
 
