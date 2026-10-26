@@ -174,7 +174,11 @@ pub fn wallpaper(args: &[String], dir: &Path, config: &Value) -> Result<Value> {
                 return Err(err("Only imported wallpapers may be deleted"));
             }
             let path = p.to_string_lossy();
-            if references(config, &path) {
+            // The editor's last-used background is a convenience, not a saved style.
+            if config
+                .as_object()
+                .is_some_and(|o| o.iter().any(|(k, v)| k != "editor" && references(v, &path)))
+            {
                 return Err(err("Wallpaper is used by a saved style"));
             }
             for entry in fs::read_dir(dir)? {
@@ -277,6 +281,7 @@ mod tests {
             )
             .is_err()
         );
+        let remembered = json!({"editor":{"background":{"type":"background","mode":"wallpaper","image_path":path}}});
         fs::write(
             d.join("edited-123-4.project.json"),
             serde_json::to_vec(&json!({"operations":[{"type":"background","image_path":path}]}))
@@ -303,7 +308,7 @@ mod tests {
         wallpaper(
             &crate::strings(&["wallpaper", "delete", path]),
             &d,
-            &json!({}),
+            &remembered,
         )
         .unwrap();
         assert!(!Path::new(path).exists());

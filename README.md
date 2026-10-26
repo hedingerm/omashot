@@ -57,6 +57,7 @@ OmaShot is a native screenshot tool for Omarchy, built as an Omarchy shell plugi
 - **Blur, pixelate and redact** sensitive content
 - Crop, rotate, flip and combine images
 - Every mark stays editable: select, move, resize, undo/redo
+- Remembers your last tool, color, sizes, text style, redaction, crop options and background for the next edit
 
 </td>
 </tr>
@@ -228,7 +229,7 @@ Most settings live in the Preferences panel. Under the hood:
 | Path | Contents |
 |---|---|
 | `~/.local/share/omashot/` | Captures, editable projects, wallpapers (`$XDG_DATA_HOME`) |
-| `~/.config/omashot/config.json` | Preferences (`$XDG_CONFIG_HOME`) |
+| `~/.config/omashot/config.json` | Preferences and the editor's last-used settings (`editor`) (`$XDG_CONFIG_HOME`) |
 
 `omashot config` prints the current configuration; `omashot config '<json>'` replaces it, so keep existing keys when scripting.
 

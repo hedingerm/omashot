@@ -962,6 +962,15 @@ Item {
                             root.refresh();
                         }
                         customPresets: root.preferences.background_presets || []
+                        savedSettings: root.preferences.editor || null
+                        onSettingsUsed: function (settings) {
+                            if (!root.preferencesLoaded)
+                                return;
+                            var c = Object.assign({}, root.preferences);
+                            c.editor = settings;
+                            root.preferences = c;
+                            root.savePreferences(c, "editor-save");
+                        }
                         onPresetsChanged: function (presets) {
                             var c = Object.assign({}, root.preferences);
                             c.background_presets = presets;
