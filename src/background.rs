@@ -299,7 +299,17 @@ fn cover(img: &RgbaImage, w: u32, h: u32) -> RgbaImage {
     let resized = imageops::resize(img, nw, nh, imageops::FilterType::Lanczos3);
     imageops::crop_imm(&resized, (nw - w) / 2, (nh - h) / 2, w, h).to_image()
 }
+#[cfg(test)]
 pub fn compose(img: &RgbaImage, op: &Value) -> Result<(RgbaImage, Value)> {
+    compose_grown(img, op, &|_, _, _, _| [0; 4])
+}
+/// `grow(tx, ty, w, h)` returns extra (left, top, right, bottom) canvas for overlay annotations, given where the
+/// source origin lands on the unextended `w`x`h` canvas.
+pub fn compose_grown(
+    img: &RgbaImage,
+    op: &Value,
+    grow: &dyn Fn(i64, i64, u32, u32) -> [u32; 4],
+) -> Result<(RgbaImage, Value)> {
     let pad = n(op, "padding", 64.).clamp(0., 2000.) as u32;
     let inset = n(op, "inset", 0.).clamp(0., 200.) as u32;
     let balanced = if op["gradient_version"].as_u64() == Some(2)
@@ -324,6 +334,47 @@ pub fn compose(img: &RgbaImage, op: &Value) -> Result<(RgbaImage, Value)> {
             w = (h as f64 * aspect).ceil() as u32;
         }
     }
+    let alignment = op["alignment"].as_str().unwrap_or("center");
+    let mut x = (w - frame_w) / 2;
+    let mut y = (h - frame_h) / 2;
+    match alignment {
+        "top-left" => {
+            x = pad;
+            y = pad;
+        }
+        "top" => y = pad,
+        "top-right" => {
+            x = w - frame_w - pad;
+            y = pad;
+        }
+        "left" => x = pad,
+        "center" => {}
+        "right" => x = w - frame_w - pad,
+        "bottom-left" => {
+            x = pad;
+            y = h - frame_h - pad;
+        }
+        "bottom" => y = h - frame_h - pad,
+        "bottom-right" => {
+            x = w - frame_w - pad;
+            y = h - frame_h - pad;
+        }
+        _ => return Err(err("Invalid background alignment")),
+    }
+    let offset = n(op, "shadow_offset", 8.).clamp(-100., 100.) as i64;
+    if op["auto_balance"].as_bool().unwrap_or(true)
+        && alignment == "center"
+        && h > frame_h + pad * 2
+    {
+        y = (y as i64 - offset / 2).clamp(pad as i64, (h - frame_h - pad) as i64) as u32;
+    }
+    let [gl, gt, gr, gb] = grow(
+        (x + inset) as i64 - balanced.0 as i64,
+        (y + inset) as i64 - balanced.1 as i64,
+        w,
+        h,
+    );
+    let (x, y, w, h) = (x + gl, y + gt, w + gl + gr, h + gt + gb);
     if w as u64 * h as u64 > 100_000_000 || w > 30000 || h > 30000 {
         return Err(err("Background canvas too large"));
     }
@@ -368,40 +419,6 @@ pub fn compose(img: &RgbaImage, op: &Value) -> Result<(RgbaImage, Value)> {
     let blur = n(op, "blur", if mode == "blurred" { 24. } else { 0. }).clamp(0., 100.) as f32;
     if blur > 0. {
         bg = self::blur(&bg, blur);
-    }
-    let alignment = op["alignment"].as_str().unwrap_or("center");
-    let mut x = (w - frame_w) / 2;
-    let mut y = (h - frame_h) / 2;
-    match alignment {
-        "top-left" => {
-            x = pad;
-            y = pad;
-        }
-        "top" => y = pad,
-        "top-right" => {
-            x = w - frame_w - pad;
-            y = pad;
-        }
-        "left" => x = pad,
-        "center" => {}
-        "right" => x = w - frame_w - pad,
-        "bottom-left" => {
-            x = pad;
-            y = h - frame_h - pad;
-        }
-        "bottom" => y = h - frame_h - pad,
-        "bottom-right" => {
-            x = w - frame_w - pad;
-            y = h - frame_h - pad;
-        }
-        _ => return Err(err("Invalid background alignment")),
-    }
-    let offset = n(op, "shadow_offset", 8.).clamp(-100., 100.) as i64;
-    if op["auto_balance"].as_bool().unwrap_or(true)
-        && alignment == "center"
-        && h > frame_h + pad * 2
-    {
-        y = (y as i64 - offset / 2).clamp(pad as i64, (h - frame_h - pad) as i64) as u32;
     }
     let radius = n(op, "radius", 0.).clamp(0., 300.);
     let mut frame = RgbaImage::from_pixel(

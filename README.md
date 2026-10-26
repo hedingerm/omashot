@@ -57,6 +57,7 @@ OmaShot is a native screenshot tool for Omarchy, built as an Omarchy shell plugi
 - **Blur, pixelate and redact** sensitive content
 - Crop, rotate, flip and combine images
 - Every mark stays editable: select, move, resize, undo/redo
+- Draw and write past the screenshot's edge: notes land on the background padding, which grows as needed, or on a white margin without a background
 - Remembers your last tool, color, sizes, text style, redaction, crop options and background for the next edit
 
 </td>
@@ -295,6 +296,7 @@ packaging/  desktop entry
 
 - Scrolling capture follows your manual scrolling; it doesn't scroll the app for you. Stitching only sees pixels, so long blank stretches can come out shorter, and a jump of more than a screenful inside a blank area can join unrelated parts.
 - Marks drawn before a crop, resize or rotation stay in the project, but you need to undo the transform to edit their handles.
+- Blur, pixelate, redact and spotlight only act on the screenshot itself. Marks in projects saved by older versions stay clipped to the screenshot. A crop, resize or rotation turns notes on the background padding into a white margin, since the background is applied after it.
 - No crop edge snapping or screen color picker yet.
 - OCR needs installed Tesseract language data.
 - Tested on a single monitor; unusual multi-monitor layouts may need fixes.

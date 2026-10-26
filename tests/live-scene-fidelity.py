@@ -19,6 +19,10 @@ cases={
  'rotate':[op('arrow'),{'type':'rotate','angle':90},op('rectangle',x=40,y=60)],
  'flip':[op('text'),{'type':'flip','axis':'horizontal'}],'flip vertical':[op('line'),{'type':'flip','axis':'vertical'},bg],
  'resize':[op('rectangle'),{'type':'resize','w':600,'h':300}],
+ # Overlay annotations leave the screenshot: white margins without a background, grown padding with one.
+ 'overlay margin':[op('arrow',x=-90,y=60,x2=300,y2=200,overlay=True),op('text',x=640,y=470,w=150,h=30,text='Note',overlay=True)],
+ 'overlay padding':[op('rectangle'),op('arrow',x=-30,y=-20,x2=200,y2=150,overlay=True),op('text',x=700,y=-90,w=120,h=30,text='Note',overlay=True),op('highlight',x=-60,y=520,w=200,h=30,color='#ffe629',overlay=True),bg],
+ 'overlay crop':[op('arrow',x=-60,y=100,x2=200,y2=100,overlay=True),{'type':'crop','x':-80,'y':40,'w':600,'h':400,'background_color':'#22c55e'},op('ellipse',x=50,y=40)],
 }
 limits={'text outlined':3}
 with tempfile.TemporaryDirectory(prefix='omashot-fidelity-') as td:

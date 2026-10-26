@@ -19,10 +19,25 @@ Item {
     property var balance: null
     property var gradients: []
     property real zoom: 1
-    readonly property var stageSize: Geometry.documentSize(baseWidth, baseHeight, preOperations)
-    readonly property var change: transformOp ? Geometry.transformOf(transformOp, stageSize.w, stageSize.h) : null
+    // Overlay annotations draw above the background at the source origin; the rest is clipped to the source.
+    readonly property var overlays: operations.filter(Geometry.isOverlay)
+    readonly property var marks: operations.filter(function (o) {
+        return !Geometry.isOverlay(o);
+    })
+    readonly property var preOverlays: preOperations.filter(Geometry.isOverlay)
+    readonly property var preMarks: preOperations.filter(function (o) {
+        return !Geometry.isOverlay(o);
+    })
+    readonly property var preSize: Geometry.documentSize(baseWidth, baseHeight, preOperations)
+    // Before a transform, overlays that left the stage grew it with white (main.rs `render`); a crop is in source coordinates.
+    readonly property var preGrowth: Geometry.growth(preOverlays, 0, 0, preSize.w, preSize.h)
+    readonly property var stageSize: ({
+            w: preSize.w + preGrowth.l + preGrowth.r,
+            h: preSize.h + preGrowth.t + preGrowth.b
+        })
+    readonly property var change: transformOp ? Geometry.transformOf(transformOp.type === "crop" ? Geometry.moved(transformOp, preGrowth.l, preGrowth.t) : transformOp, stageSize.w, stageSize.h) : null
     readonly property var documentSize: change ? Geometry.documentSize(change.w, change.h, operations) : Geometry.documentSize(baseWidth, baseHeight, operations)
-    readonly property var layout: Geometry.sceneLayout(documentSize.w, documentSize.h, background, balance)
+    readonly property var layout: Geometry.sceneLayout(documentSize.w, documentSize.h, background, balance, overlays)
     readonly property bool ready: base.status === Image.Ready
     width: layout.w * zoom
     height: layout.h * zoom
@@ -38,6 +53,11 @@ Item {
         // Rendered at document resolution and scaled like the backend image, so the swap to exact pixels doesn't pop.
         layer.enabled: Math.max(width, height) <= 8192
         layer.smooth: true
+        Rectangle {
+            anchors.fill: parent
+            visible: !scene.background && !!scene.layout.grown
+            color: "white"
+        }
         Loader {
             anchors.fill: parent
             // Created up front so enabling a background doesn't pay for component creation mid-drag.
@@ -92,27 +112,61 @@ Item {
                         readonly property var m: scene.change ? scene.change.m : [1, 0, 0, 0, 1, 0]
                         matrix: Qt.matrix4x4(m[0], m[1], 0, m[2], m[3], m[4], 0, m[5], 0, 0, 1, 0, 0, 0, 0, 1)
                     }
-                    Image {
-                        id: base
-                        width: scene.baseWidth
-                        height: scene.baseHeight
-                        source: scene.baseSource
-                        smooth: true
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: scene.preGrowth.l + scene.preGrowth.t + scene.preGrowth.r + scene.preGrowth.b > 0
+                        color: "white"
                     }
-                    Repeater {
-                        model: scene.preOperations.length
-                        Annotation {
-                            required property int index
-                            op: scene.preOperations[index] || ({})
+                    Item {
+                        x: scene.preGrowth.l
+                        y: scene.preGrowth.t
+                        Image {
+                            id: base
+                            width: scene.baseWidth
+                            height: scene.baseHeight
+                            source: scene.baseSource
+                            smooth: true
+                        }
+                        Repeater {
+                            model: scene.preMarks.length
+                            Annotation {
+                                required property int index
+                                op: scene.preMarks[index] || ({})
+                                area: scene.preSize
+                            }
+                        }
+                        Repeater {
+                            model: scene.preOverlays.length
+                            Annotation {
+                                required property int index
+                                op: scene.preOverlays[index] || ({})
+                                area: scene.stageSize
+                                ox: scene.preGrowth.l
+                                oy: scene.preGrowth.t
+                            }
                         }
                     }
                 }
                 Repeater {
-                    model: scene.operations.length
+                    model: scene.marks.length
                     Annotation {
                         required property int index
-                        op: scene.operations[index] || ({})
+                        op: scene.marks[index] || ({})
                     }
+                }
+            }
+        }
+        Item {
+            x: scene.layout.content.x - scene.layout.content.sourceX
+            y: scene.layout.content.y - scene.layout.content.sourceY
+            Repeater {
+                model: scene.overlays.length
+                Annotation {
+                    required property int index
+                    op: scene.overlays[index] || ({})
+                    area: scene.layout
+                    ox: parent.x
+                    oy: parent.y
                 }
             }
         }
@@ -123,6 +177,10 @@ Item {
         property var op
         property var shown: ({})
         property string signature: ""
+        // The image raster ops are clamped to, and where op coordinates (0, 0) sits on it.
+        property var area: scene.documentSize
+        property real ox: 0
+        property real oy: 0
         // Gestures replace one entry and keep the others by reference; edits elsewhere clone, so compare content.
         onOpChanged: {
             if (op === shown)
@@ -136,7 +194,7 @@ Item {
         readonly property string type: shown.type || ""
         readonly property string ink: Geometry.qmlColor(shown.color)
         readonly property real stroke: Geometry.clamp(Geometry.num(shown, "width", 4), 1, 100)
-        readonly property var box: Geometry.rasterBox(shown, scene.documentSize.w, scene.documentSize.h)
+        readonly property var box: Geometry.rasterBox(shown, area.w, area.h, ox, oy)
         Loader {
             active: ["line", "arrow", "rectangle", "filled", "ellipse", "freehand"].indexOf(annotation.type) >= 0
             sourceComponent: Shape {

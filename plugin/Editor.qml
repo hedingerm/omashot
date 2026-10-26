@@ -226,6 +226,7 @@ Rectangle {
     property alias inlineEditor: inlineText
     property alias annotationSurface: imageArea
     property alias annotationToolbar: annotationToolbarViewport
+    property alias sizeControl: sizeSpin
     property alias cropToolbar: cropToolbarViewport
     signal saved(string path)
     signal error(string message)
@@ -403,6 +404,7 @@ Rectangle {
         gestureX = x;
         gestureY = y;
         previewTimer.stop();
+        lockView();
     }
     function setGesture(op) {
         if (!gestureBefore || selectedIndex < 0)
@@ -431,6 +433,23 @@ Rectangle {
         gestureBefore = null;
         gestureOriginal = null;
         previewTimer.restart();
+        unlockView();
+    }
+    // While a drag may grow the canvas, the scale and the source origin's place on screen stay fixed, so the
+    // pointer keeps mapping to the same source position; the view recenters on release.
+    property var viewLock: null
+    function lockView() {
+        if (viewLock)
+            return;
+        var s = canvasScroll.imageScale;
+        viewLock = {
+            scale: s,
+            x: picture.x + (contentRect.x - (contentRect.sourceX || 0)) * s,
+            y: picture.y + (contentRect.y - (contentRect.sourceY || 0)) * s
+        };
+    }
+    function unlockView() {
+        viewLock = null;
     }
     function changeSelected(key, value) {
         if (!selectedOperation || busy)
@@ -483,7 +502,8 @@ Rectangle {
             text: inlineText.text,
             color: ink,
             size: textSize,
-            style: textStyle
+            style: textStyle,
+            overlay: editingTextIndex < 0 || operations[editingTextIndex].overlay === true
         };
         fitText(op);
         if (editingTextIndex >= 0) {
@@ -512,10 +532,22 @@ Rectangle {
         }
         return false;
     }
+    // The current stage's size and where its canvas starts in source coordinates, including white margins
+    // that overlay annotations grew it by (main.rs `render` without a background).
     function documentExtent() {
-        var w = sourceImage.sourceSize.width, h = sourceImage.sourceSize.height;
+        var w = sourceImage.sourceSize.width, h = sourceImage.sourceSize.height, stage = [], g;
+        function grow() {
+            g = Geometry.growth(stage, 0, 0, w, h);
+            w += g.l + g.r;
+            h += g.t + g.b;
+            stage = [];
+        }
         operations.forEach(function (o) {
-            if (o.type === "crop" || o.type === "resize") {
+            if (["crop", "resize", "rotate", "flip"].indexOf(o.type) >= 0)
+                grow();
+            if (Geometry.isOverlay(o))
+                stage.push(o);
+            else if (o.type === "crop" || o.type === "resize") {
                 w = o.w;
                 h = o.h;
             } else if (o.type === "rotate" && Math.abs(Number(o.angle || 90)) % 180 === 90) {
@@ -527,7 +559,10 @@ Rectangle {
                 h = Math.max(h, o.y + o.h);
             }
         });
+        grow();
         return {
+            x: -g.l,
+            y: -g.t,
             w: w,
             h: h
         };
@@ -540,12 +575,7 @@ Rectangle {
         selectedIndex = -1;
         cropEditing = true;
         tool = "select";
-        cropBox = {
-            x: 0,
-            y: 0,
-            w: documentExtent().w,
-            h: documentExtent().h
-        };
+        cropBox = documentExtent();
     }
     function setCropDimension(key, value) {
         var next = Object.assign({}, cropBox);
@@ -583,13 +613,7 @@ Rectangle {
             return;
         add(operation);
         selectedIndex = -1;
-        var extent = documentExtent();
-        cropBox = {
-            x: 0,
-            y: 0,
-            w: extent.w,
-            h: extent.h
-        };
+        cropBox = documentExtent();
     }
     function applyCrop() {
         if (!cropEditing || busy)
@@ -615,7 +639,7 @@ Rectangle {
         if (busy)
             return;
         var instant = Date.now();
-        if (!(kind === "background" && lastChange === kind && instant - lastChangeAt < 700))
+        if (!((kind === "background" || kind === "style") && lastChange === kind && instant - lastChangeAt < 700))
             undoStack = undoStack.concat([snapshot()]);
         operations = next;
         if (selectedIndex >= next.length)
@@ -673,13 +697,7 @@ Rectangle {
         selectedIndex = -1;
         syncBackground();
         if (cropEditing) {
-            var extent = documentExtent();
-            cropBox = {
-                x: 0,
-                y: 0,
-                w: extent.w,
-                h: extent.h
-            };
+            cropBox = documentExtent();
         }
     }
     function redo() {
@@ -693,13 +711,7 @@ Rectangle {
         selectedIndex = -1;
         syncBackground();
         if (cropEditing) {
-            var extent = documentExtent();
-            cropBox = {
-                x: 0,
-                y: 0,
-                w: extent.w,
-                h: extent.h
-            };
+            cropBox = documentExtent();
         }
     }
     property string projectInput: ""
@@ -993,12 +1005,12 @@ Rectangle {
             if (code === 0) {
                 if (kind === "layer") {
                     try {
-                        var layer = JSON.parse(result);
+                        var layer = JSON.parse(result), extent = root.documentExtent();
                         root.add({
                             type: "image",
                             path: layer.path,
                             x: 0,
-                            y: root.documentExtent().h,
+                            y: extent.y + extent.h,
                             w: layer.width,
                             h: layer.height
                         });
@@ -1370,23 +1382,35 @@ Rectangle {
                         onClicked: inkPopup.open()
                     }
                     SpinBox {
+                        id: sizeSpin
                         from: root.textOptions ? 10 : 1
                         to: root.textOptions ? 144 : 30
                         value: root.textOptions ? root.textSize : root.strokeWidth
                         editable: true
+                        wheelEnabled: true
                         implicitWidth: 92
                         implicitHeight: 32
                         font.pixelSize: 11
                         ToolTip.visible: hovered
                         ToolTip.text: root.textOptions ? "Text size" : "Stroke width"
                         ToolTip.delay: 500
-                        onValueModified: {
+                        function apply(v) {
                             if (root.textOptions) {
-                                root.textSize = value;
-                                root.changeSelected("size", value);
+                                root.textSize = v;
+                                root.changeSelected("size", v);
                             } else {
-                                root.strokeWidth = value;
-                                root.changeSelected("width", value);
+                                root.strokeWidth = v;
+                                root.changeSelected("width", v);
+                            }
+                        }
+                        onValueModified: apply(value)
+                        // Apply typed sizes as they are typed, not only on Enter or focus loss.
+                        Connections {
+                            target: sizeSpin.contentItem
+                            function onTextEdited() {
+                                var v = Number(sizeSpin.contentItem.text);
+                                if (Number.isInteger(v) && v >= sizeSpin.from && v <= sizeSpin.to && v !== sizeSpin.value)
+                                    sizeSpin.apply(v);
                             }
                         }
                     }
@@ -1499,7 +1523,7 @@ Rectangle {
                         anchors.fill: parent
                         contentWidth: Math.max(width, root.renderedWidth * imageScale + 64)
                         contentHeight: Math.max(height, root.renderedHeight * imageScale + 64)
-                        readonly property real imageScale: root.zoom > 0 ? root.zoom : Math.max(.01, Math.min((width - 64) / Math.max(1, root.renderedWidth), (height - 64) / Math.max(1, root.renderedHeight), 1))
+                        readonly property real imageScale: root.viewLock ? root.viewLock.scale : root.zoom > 0 ? root.zoom : Math.max(.01, Math.min((width - 64) / Math.max(1, root.renderedWidth), (height - 64) / Math.max(1, root.renderedHeight), 1))
                         boundsBehavior: Flickable.StopAtBounds
                         interactive: false
                         clip: true
@@ -1523,7 +1547,9 @@ Rectangle {
                                 id: picture
                                 width: Math.max(1, root.renderedWidth * canvasScroll.imageScale)
                                 height: Math.max(1, root.renderedHeight * canvasScroll.imageScale)
-                                anchors.centerIn: parent
+                                // Centered, or with the source origin held in place while a drag grows the canvas.
+                                x: root.viewLock ? root.viewLock.x - (root.contentRect.x - (root.contentRect.sourceX || 0)) * canvasScroll.imageScale : (parent.width - width) / 2
+                                y: root.viewLock ? root.viewLock.y - (root.contentRect.y - (root.contentRect.sourceY || 0)) * canvasScroll.imageScale : (parent.height - height) / 2
                                 source: root.previewPath ? "file://" + root.previewPath : sourceImage.source
                                 fillMode: Image.Stretch
                                 cache: false
@@ -1534,7 +1560,8 @@ Rectangle {
                             }
                             LiveScene {
                                 id: live
-                                anchors.centerIn: parent
+                                x: picture.x
+                                y: picture.y
                                 visible: root.liveShown
                                 zoom: canvasScroll.imageScale
                                 baseSource: root.liveBase ? "file://" + root.liveBase.path : ""
@@ -1559,9 +1586,21 @@ Rectangle {
                                 readonly property real sourceY: root.contentRect.sourceY || 0
                                 readonly property real sx: width / Math.max(1, root.contentRect.sourceW || sourceImage.sourceSize.width)
                                 readonly property real sy: height / Math.max(1, root.contentRect.sourceH || sourceImage.sourceSize.height)
+                                // Pointer position in source coordinates; with `snap`, positions just past the canvas edge land on it.
+                                function sourcePoint(item, x, y, snap) {
+                                    var p = item.mapToItem(picture, x, y), e = snap ? 8 : 0;
+                                    p.x = p.x < 0 && p.x > -e ? 0 : p.x > picture.width && p.x < picture.width + e ? picture.width : p.x;
+                                    p.y = p.y < 0 && p.y > -e ? 0 : p.y > picture.height && p.y < picture.height + e ? picture.height : p.y;
+                                    var q = picture.mapToItem(imageArea, p.x, p.y);
+                                    return Qt.point(sourceX + q.x / sx, sourceY + q.y / sy);
+                                }
                                 MouseArea {
                                     id: drawArea
-                                    anchors.fill: parent
+                                    // The whole canvas view: overlay annotations may start or end beyond the screenshot.
+                                    x: -imageArea.x
+                                    y: -imageArea.y
+                                    width: imageArea.parent.width
+                                    height: imageArea.parent.height
                                     enabled: !root.busy && !root.cropEditing && !root.textEditing && root.tool !== "select" && (root.liveReady || root.previewReady)
                                     visible: enabled // disabled MouseAreas still claim the cursor
                                     cursorShape: Qt.CrossCursor
@@ -1590,6 +1629,8 @@ Rectangle {
                                         };
                                         if (root.tool === "step")
                                             result.centered = true;
+                                        if (Geometry.overlayTypes.indexOf(result.type) >= 0)
+                                            result.overlay = true;
                                         if (root.tool === "highlight") {
                                             result.h = Math.max(result.h, root.strokeWidth * 4);
                                             result.y = (startY + endY - result.h) / 2;
@@ -1597,8 +1638,10 @@ Rectangle {
                                         return result;
                                     }
                                     onPressed: function (mouse) {
-                                        startX = endX = imageArea.sourceX + mouse.x / imageArea.sx;
-                                        startY = endY = imageArea.sourceY + mouse.y / imageArea.sy;
+                                        var p = imageArea.sourcePoint(drawArea, mouse.x, mouse.y, true);
+                                        root.lockView();
+                                        startX = endX = p.x;
+                                        startY = endY = p.y;
                                         points = [
                                             {
                                                 x: startX,
@@ -1610,8 +1653,9 @@ Rectangle {
                                     }
                                     onPositionChanged: function (mouse) {
                                         if (pressed) {
-                                            endX = imageArea.sourceX + Math.max(0, Math.min(width, mouse.x)) / imageArea.sx;
-                                            endY = imageArea.sourceY + Math.max(0, Math.min(height, mouse.y)) / imageArea.sy;
+                                            var p = imageArea.sourcePoint(drawArea, mouse.x, mouse.y, true);
+                                            endX = p.x;
+                                            endY = p.y;
                                             if (root.tool === "freehand")
                                                 points = points.concat([
                                                     {
@@ -1628,6 +1672,7 @@ Rectangle {
                                     onReleased: {
                                         var op = operation();
                                         root.draft = null;
+                                        root.unlockView();
                                         if (root.tool === "text" || root.tool === "step") {
                                             op.x = startX;
                                             op.y = startY;
@@ -1645,11 +1690,17 @@ Rectangle {
                                         root.noteInput("draw-commit");
                                         root.selectedIndex = root.operations.length - 1 - (root.backgroundOperation() ? 1 : 0);
                                     }
-                                    onCanceled: root.draft = null
+                                    onCanceled: {
+                                        root.draft = null;
+                                        root.unlockView();
+                                    }
                                 }
                                 MouseArea {
                                     id: selectionArea
-                                    anchors.fill: parent
+                                    x: -imageArea.x
+                                    y: -imageArea.y
+                                    width: imageArea.parent.width
+                                    height: imageArea.parent.height
                                     enabled: root.tool === "select" && !root.cropEditing && !root.textEditing && !root.busy
                                     visible: enabled
                                     cursorShape: panning ? Qt.ClosedHandCursor : root.selectedOperation ? Qt.SizeAllCursor : Qt.ArrowCursor
@@ -1659,10 +1710,10 @@ Rectangle {
                                     property real initialContentY: 0
                                     onPressed: function (e) {
                                         forceActiveFocus();
-                                        var x = imageArea.sourceX + e.x / imageArea.sx, y = imageArea.sourceY + e.y / imageArea.sy;
-                                        var index = root.selectAt(x, y);
+                                        var p = imageArea.sourcePoint(selectionArea, e.x, e.y, false);
+                                        var index = root.selectAt(p.x, p.y);
                                         if (index >= 0)
-                                            root.beginGesture(index, x, y);
+                                            root.beginGesture(index, p.x, p.y);
                                         else {
                                             panning = true;
                                             panStart = mapToItem(viewport, e.x, e.y);
@@ -1675,8 +1726,10 @@ Rectangle {
                                             var p = mapToItem(viewport, e.x, e.y);
                                             canvasScroll.contentX = Math.max(0, Math.min(canvasScroll.contentWidth - canvasScroll.width, initialContentX + panStart.x - p.x));
                                             canvasScroll.contentY = Math.max(0, Math.min(canvasScroll.contentHeight - canvasScroll.height, initialContentY + panStart.y - p.y));
-                                        } else if (pressed && root.gestureOriginal)
-                                            root.moveGesture(imageArea.sourceX + e.x / imageArea.sx, imageArea.sourceY + e.y / imageArea.sy);
+                                        } else if (pressed && root.gestureOriginal) {
+                                            var q = imageArea.sourcePoint(selectionArea, e.x, e.y, false);
+                                            root.moveGesture(q.x, q.y);
+                                        }
                                     }
                                     onReleased: {
                                         panning = false;
@@ -1687,7 +1740,8 @@ Rectangle {
                                         root.endGesture();
                                     }
                                     onDoubleClicked: function (e) {
-                                        var index = root.selectAt(imageArea.sourceX + e.x / imageArea.sx, imageArea.sourceY + e.y / imageArea.sy);
+                                        var p = imageArea.sourcePoint(selectionArea, e.x, e.y, false);
+                                        var index = root.selectAt(p.x, p.y);
                                         if (index >= 0 && root.operations[index].type === "text")
                                             root.editText(root.operations[index].x, root.operations[index].y, index);
                                     }
@@ -1782,11 +1836,15 @@ Rectangle {
                                 }
                                 Item {
                                     id: cropArea
-                                    anchors.fill: parent
+                                    // Covers the whole canvas, which may extend past the screenshot.
+                                    x: picture.x - imageArea.x
+                                    y: picture.y - imageArea.y
+                                    width: picture.width
+                                    height: picture.height
                                     visible: root.cropEditing
                                     z: 25
-                                    readonly property real cropLeft: (root.cropBox.x - imageArea.sourceX) * imageArea.sx
-                                    readonly property real cropTop: (root.cropBox.y - imageArea.sourceY) * imageArea.sy
+                                    readonly property real cropLeft: (root.cropBox.x - imageArea.sourceX) * imageArea.sx - x
+                                    readonly property real cropTop: (root.cropBox.y - imageArea.sourceY) * imageArea.sy - y
                                     readonly property real boxWidth: root.cropBox.w * imageArea.sx
                                     readonly property real boxHeight: root.cropBox.h * imageArea.sy
                                     Rectangle {
@@ -1875,8 +1933,8 @@ Rectangle {
                                             readonly property var modelData: Geometry.handles(Object.assign({
                                                 type: "rectangle"
                                             }, root.cropBox))[index]
-                                            x: (modelData.x - imageArea.sourceX) * imageArea.sx - 5
-                                            y: (modelData.y - imageArea.sourceY) * imageArea.sy - 5
+                                            x: (modelData.x - imageArea.sourceX) * imageArea.sx - cropArea.x - 5
+                                            y: (modelData.y - imageArea.sourceY) * imageArea.sy - cropArea.y - 5
                                             width: 10
                                             height: 10
                                             radius: Theme.radius(3)

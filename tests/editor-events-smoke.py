@@ -51,6 +51,15 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:1100;implicitHeight:800
    var q=at(300,200);require(Math.abs(surface.sx/scale-Math.pow(1.25,3))<.01,"Ctrl+wheel zooms");require(Math.abs(q.x-p.x)<1.5&&Math.abs(q.y-p.y)<1.5,"Ctrl+wheel keeps the pixel under the cursor")
    mouseDrag(edit,q.x,q.y,-100,-60,Qt.MiddleButton,Qt.NoModifier,50);wait(50);var r=at(300,200)
    require(Math.abs(r.x-q.x+100)<2&&Math.abs(r.y-q.y+60)<2,"Middle-drag pans the canvas with a drawing tool active");require(edit.operations.length===count,"Middle-drag does not draw")
+   edit.zoom=0;edit.tool="arrow";ready();wait(100);count=edit.operations.length;var w0=edit.renderedWidth;p=at(100,100);var left=at(0,0).x
+   mouseDrag(edit,p.x,p.y,left-25-p.x,0,Qt.LeftButton,Qt.NoModifier,50);wait(50)
+   var a=edit.operations[count];require(edit.operations.length===count+1&&a.overlay===true&&a.x2<0,"Arrow drawn past the screenshot is an overlay ending outside it: "+JSON.stringify(a))
+   require(edit.renderedWidth>w0&&edit.contentRect.x>0,"Canvas grows left for an overlay");ready()
+   require(edit.exactRect.w===Math.round(edit.renderedWidth)&&edit.exactRect.content.x===edit.contentRect.x,"Exact render grows like the live scene")
+   edit.tool="line";p=at(300,200);var right=at(700,0).x
+   mouseDrag(edit,p.x,p.y,right+4-p.x,0,Qt.LeftButton,Qt.NoModifier,50);wait(50)
+   require(edit.operations[count+1].x2===700,"A stroke ending just past the edge snaps onto it: "+edit.operations[count+1].x2)
+   edit.beginCrop();require(edit.cropBox.x<0&&edit.cropBox.w>700,"Crop starts from the grown canvas");edit.cancelActiveMode()
    console.log("EVENTS_PASSED");Qt.quit()
   }
  }
@@ -58,4 +67,4 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:1100;implicitHeight:800
 } }''')
  result=subprocess.run(['qs','-p',str(harness)],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=50)
  assert result.returncode==0 and 'EVENTS_PASSED' in result.stdout and not any(x in result.stdout for x in ['FAIL!','EVENT_FAILURE=','EVENTS_TIMEOUT','ReferenceError','TypeError','ERROR:']),result.stdout
-print('PASS: actual mouse selection/move/curve/resize, inline text keyboard editing, delete/undo, crop handle input, Ctrl+wheel zoom and middle-drag pan')
+print('PASS: actual mouse selection/move/curve/resize, inline text keyboard editing, delete/undo, crop handle input, Ctrl+wheel zoom, middle-drag pan, overlay drawing past the screenshot with canvas growth and edge snapping')

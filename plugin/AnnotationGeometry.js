@@ -57,9 +57,33 @@ function trunc(v){return v<0?Math.ceil(v):Math.floor(v)}
 // Backend colors are #rgb, #rrggbb or #rrggbbaa; QML reads 8 digits as #aarrggbb.
 function qmlColor(c){c=typeof c==='string'&&/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c)?c:'#f05a70';return c.length===9?'#'+c.slice(7)+c.slice(1,7):c}
 function documentSize(w,h,ops){ops.forEach(function(o){if(o.type==='image'){w=Math.max(w,u32(Math.max(1,num(o,'x',0)+Math.max(1,num(o,'w',100)))));h=Math.max(h,u32(Math.max(1,num(o,'y',0)+Math.max(1,num(o,'h',100)))))}});return{w:w,h:h}}
-function sceneLayout(w,h,bg,balance){
-    var full={x:0,y:0,w:w,h:h,sourceX:0,sourceY:0,sourceW:w,sourceH:h}
-    if(!bg)return{w:w,h:h,frame:{x:0,y:0,w:w,h:h},inset:0,content:full}
+// Overlay annotations (main.rs `is_overlay`) draw above the background and grow the canvas when they leave it.
+var overlayTypes=['line','arrow','rectangle','filled','ellipse','freehand','text','step','highlight']
+function isOverlay(o){return !!o&&o.overlay===true&&overlayTypes.indexOf(o.type)>=0}
+// Geometric and inked bounds [x0,y0,x1,y1], like main.rs `overlay_bounds`.
+function overlayBounds(op){
+    var x=num(op,'x',0),y=num(op,'y',0),w=Math.max(1,num(op,'w',100)),h=Math.max(1,num(op,'h',100)),half=clamp(num(op,'width',4),1,100)/2,t=op.type
+    function hull(p){return p.reduce(function(b,q){return[Math.min(b[0],q[0]),Math.min(b[1],q[1]),Math.max(b[2],q[0]),Math.max(b[3],q[1])]},[Infinity,Infinity,-Infinity,-Infinity])}
+    function grow(b,d){return[b[0]-d,b[1]-d,b[2]+d,b[3]+d]}
+    var g
+    if(t==='line'||t==='arrow'){var p=[[x,y],[num(op,'x2',x+w),num(op,'y2',y+h)]];if(typeof op.cx==='number'&&typeof op.cy==='number')p.push([op.cx,op.cy]);g=hull(p);return[g,grow(g,t==='arrow'?half*9:half)]}
+    if(t==='freehand'){var pts=(op.points||[]).map(function(q){return[num(q,'x',0),num(q,'y',0)]});g=pts.length?hull(pts):[x,y,x,y];return[g,grow(g,half)]}
+    if(t==='text'){var size=clamp(num(op,'size',28),6,500),chars=Array.from(typeof op.text==='string'?op.text:'1').length;g=[x,y,x+num(op,'w',Math.max(8,chars*size*.63)),y+num(op,'h',size*1.4)];return[g,[g[0]-8,g[1]-4,g[2]+8,g[3]+4]]}
+    if(t==='step'){var r=clamp(num(op,'size',28),6,500)*.7+half;g=[x-r,y-r,x+r,y+r];return[g,g]}
+    g=[x,y,x+w,y+h];return[g,t==='highlight'?g:grow(g,half)]
+}
+// Extra canvas {l,t,r,b} for overlays on a w x h canvas with the source origin at (tx,ty), like main.rs `overlay_growth`.
+function growth(ops,tx,ty,w,h){
+    var o={l:0,t:0,r:0,b:0}
+    function side(cross,need){return cross?Math.max(0,Math.ceil(need+24)):0}
+    ops.forEach(function(op){if(!isOverlay(op))return;var b=overlayBounds(op),g=b[0],v=b[1]
+        o.l=Math.max(o.l,side(g[0]+tx<0,-(v[0]+tx)));o.t=Math.max(o.t,side(g[1]+ty<0,-(v[1]+ty)))
+        o.r=Math.max(o.r,side(g[2]+tx>w,v[2]+tx-w));o.b=Math.max(o.b,side(g[3]+ty>h,v[3]+ty-h))})
+    return o
+}
+function sceneLayout(w,h,bg,balance,overlays){
+    var full={x:0,y:0,w:w,h:h,sourceX:0,sourceY:0,sourceW:w,sourceH:h},g
+    if(!bg){g=growth(overlays||[],0,0,w,h);return{w:w+g.l+g.r,h:h+g.t+g.b,frame:{x:g.l,y:g.t,w:w,h:h},inset:0,grown:g.l+g.t+g.r+g.b>0,content:{x:g.l,y:g.t,w:w,h:h,sourceX:0,sourceY:0,sourceW:w,sourceH:h}}}
     var pad=u32(clamp(num(bg,'padding',64),0,2000)),inset=u32(clamp(num(bg,'inset',0),0,200)),auto=typeof bg.auto_balance==='boolean'?bg.auto_balance:true
     var b=bg.gradient_version===2&&auto&&balance&&balance.w>0&&balance.x+balance.w<=w&&balance.y+balance.h<=h?balance:full
     var fw=b.w+inset*2,fh=b.h+inset*2,W=fw+pad*2,H=fh+pad*2,aspect=clamp(num(bg,'aspect_ratio',0),0,10),a=typeof bg.alignment==='string'?bg.alignment:'center'
@@ -68,6 +92,7 @@ function sceneLayout(w,h,bg,balance){
     if(a.indexOf('left')>=0)x=pad;if(a.indexOf('right')>=0)x=W-fw-pad;if(a.indexOf('top')>=0)y=pad;if(a.indexOf('bottom')>=0)y=H-fh-pad
     var offset=trunc(clamp(num(bg,'shadow_offset',8),-100,100))
     if(auto&&a==='center'&&H>fh+pad*2)y=clamp(y-trunc(offset/2),pad,H-fh-pad)
+    g=growth(overlays||[],x+inset-b.x,y+inset-b.y,W,H);x+=g.l;y+=g.t;W+=g.l+g.r;H+=g.t+g.b
     return{w:W,h:H,frame:{x:x,y:y,w:fw,h:fh},inset:inset,offset:offset,content:{x:x+inset,y:y+inset,w:b.w,h:b.h,sourceX:b.x,sourceY:b.y,sourceW:b.w,sourceH:b.h}}
 }
 function freehandPoints(op){
@@ -92,7 +117,8 @@ function arrowHead(op){
     return'M'+(x2+.5)+' '+(y2+.5)+'L'+(x2-len*Math.cos(angle-.5)+.5)+' '+(y2-len*Math.sin(angle-.5)+.5)+'L'+(x2-len*Math.cos(angle+.5)+.5)+' '+(y2-len*Math.sin(angle+.5)+.5)+'Z'
 }
 // Raster operations act on whole pixels clamped to the image, like `raster_op`.
-function rasterBox(op,w,h){var x=u32(Math.max(0,num(op,'x',0))),y=u32(Math.max(0,num(op,'y',0)));return{x:x,y:y,w:Math.min(u32(Math.max(1,num(op,'w',1))),Math.max(0,w-x)),h:Math.min(u32(Math.max(1,num(op,'h',1))),Math.max(0,h-y))}}
+// (ox,oy) places the op's coordinates on the image (overlays sit at the source origin), the box is returned in op coordinates.
+function rasterBox(op,w,h,ox,oy){ox=ox||0;oy=oy||0;var x=u32(Math.max(0,num(op,'x',0)+ox)),y=u32(Math.max(0,num(op,'y',0)+oy));return{x:x-ox,y:y-oy,w:Math.min(u32(Math.max(1,num(op,'w',1))),Math.max(0,w-x)),h:Math.min(u32(Math.max(1,num(op,'h',1))),Math.max(0,h-y))}}
 function roundedRect(x,y,w,h,r){r=Math.max(0,Math.min(r,w/2,h/2));return'M'+(x+r)+' '+y+'H'+(x+w-r)+'A'+r+' '+r+' 0 0 1 '+(x+w)+' '+(y+r)+'V'+(y+h-r)+'A'+r+' '+r+' 0 0 1 '+(x+w-r)+' '+(y+h)+'H'+(x+r)+'A'+r+' '+r+' 0 0 1 '+x+' '+(y+h-r)+'V'+(y+r)+'A'+r+' '+r+' 0 0 1 '+(x+r)+' '+y+'Z'}
 // A transform's output size and affine map {m11,m12,dx,m21,m22,dy}, for drawing it live until its exact base is rendered.
 function transformOf(op,w,h){

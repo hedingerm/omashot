@@ -429,6 +429,139 @@ fn take_rgba(img: &mut DynamicImage, png: &mut Option<Vec<u8>>) -> Result<RgbaIm
     }
     Ok(std::mem::replace(img, DynamicImage::new_rgba8(0, 0)).into_rgba8())
 }
+// Annotations flagged `overlay` draw above the background in source coordinates and may leave the
+// screenshot; the canvas (background padding, or a white margin) grows to keep them. Older ops stay clipped.
+const OVERLAY_TYPES: [&str; 9] = [
+    "line",
+    "arrow",
+    "rectangle",
+    "filled",
+    "ellipse",
+    "freehand",
+    "text",
+    "step",
+    "highlight",
+];
+const OVERLAY_MARGIN: f64 = 24.;
+fn is_overlay(op: &Value) -> bool {
+    op["overlay"].as_bool() == Some(true)
+        && OVERLAY_TYPES.contains(&op["type"].as_str().unwrap_or(""))
+}
+// Geometric and inked bounds as [x0, y0, x1, y1]; mirrored by AnnotationGeometry.js `overlayBounds`.
+fn overlay_bounds(op: &Value) -> ([f64; 4], [f64; 4]) {
+    let (x, y) = (n(op, "x", 0.), n(op, "y", 0.));
+    let (w, h) = (n(op, "w", 100.).max(1.), n(op, "h", 100.).max(1.));
+    let half = n(op, "width", 4.).clamp(1., 100.) / 2.;
+    let hull = |pts: &[(f64, f64)]| {
+        pts.iter().fold(
+            [
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ],
+            |b, p| [b[0].min(p.0), b[1].min(p.1), b[2].max(p.0), b[3].max(p.1)],
+        )
+    };
+    let grow = |b: [f64; 4], d: f64| [b[0] - d, b[1] - d, b[2] + d, b[3] + d];
+    match op["type"].as_str().unwrap_or("") {
+        "line" | "arrow" => {
+            let mut pts = vec![(x, y), (n(op, "x2", x + w), n(op, "y2", y + h))];
+            if op["cx"].is_number() && op["cy"].is_number() {
+                pts.push((n(op, "cx", 0.), n(op, "cy", 0.)));
+            }
+            let g = hull(&pts);
+            (
+                g,
+                grow(
+                    g,
+                    if op["type"] == "arrow" {
+                        half * 9.
+                    } else {
+                        half
+                    },
+                ),
+            )
+        }
+        "freehand" => {
+            let pts: Vec<_> = op["points"]
+                .as_array()
+                .map(|a| a.iter().map(|p| (n(p, "x", 0.), n(p, "y", 0.))).collect())
+                .unwrap_or_default();
+            let g = if pts.is_empty() {
+                [x, y, x, y]
+            } else {
+                hull(&pts)
+            };
+            (g, grow(g, half))
+        }
+        "text" => {
+            let size = n(op, "size", 28.).clamp(6., 500.);
+            let chars = op["text"].as_str().unwrap_or("1").chars().count() as f64;
+            let g = [
+                x,
+                y,
+                x + n(op, "w", (chars * size * 0.63).max(8.)),
+                y + n(op, "h", size * 1.4),
+            ];
+            (g, [g[0] - 8., g[1] - 4., g[2] + 8., g[3] + 4.])
+        }
+        "step" => {
+            let r = n(op, "size", 28.).clamp(6., 500.) * 0.7 + half;
+            let g = [x - r, y - r, x + r, y + r];
+            (g, g)
+        }
+        "highlight" => ([x, y, x + w, y + h], [x, y, x + w, y + h]),
+        _ => {
+            let g = [x, y, x + w, y + h];
+            (g, grow(g, half))
+        }
+    }
+}
+// Extra (left, top, right, bottom) canvas so overlays fit a `w`x`h` canvas whose source origin is at (tx, ty).
+// A side grows only once a shape itself crosses it, then by its ink plus a margin.
+fn overlay_growth(ops: &[Value], tx: f64, ty: f64, w: f64, h: f64) -> [u32; 4] {
+    let mut out = [0u32; 4];
+    for op in ops {
+        let (g, v) = overlay_bounds(op);
+        let side = |cross: bool, need: f64| {
+            if cross {
+                (need + OVERLAY_MARGIN).ceil().max(0.) as u32
+            } else {
+                0
+            }
+        };
+        out[0] = out[0].max(side(g[0] + tx < 0., -(v[0] + tx)));
+        out[1] = out[1].max(side(g[1] + ty < 0., -(v[1] + ty)));
+        out[2] = out[2].max(side(g[2] + tx > w, v[2] + tx - w));
+        out[3] = out[3].max(side(g[3] + ty > h, v[3] + ty - h));
+    }
+    out
+}
+fn translated(op: &Value, dx: f64, dy: f64) -> Value {
+    let mut op = op.clone();
+    if let Some(o) = op.as_object_mut() {
+        o.remove("overlay");
+        for (k, d, default) in [
+            ("x", dx, Some(0.)),
+            ("y", dy, Some(0.)),
+            ("x2", dx, None),
+            ("y2", dy, None),
+            ("cx", dx, None),
+            ("cy", dy, None),
+        ] {
+            if let Some(v) = o.get(k).and_then(Value::as_f64).or(default) {
+                o.insert(k.into(), json!(v + d));
+            }
+        }
+        if let Some(points) = o.get_mut("points").and_then(Value::as_array_mut) {
+            for p in points {
+                *p = json!({"x": n(p, "x", 0.) + dx, "y": n(p, "y", 0.) + dy});
+            }
+        }
+    }
+    op
+}
 fn render(input: &Path, ops: &Value, output: &Path) -> Result<Option<Value>> {
     let ops = ops
         .as_array()
@@ -442,8 +575,56 @@ fn render(input: &Path, ops: &Value, output: &Path) -> Result<Option<Value>> {
     let mut png: Option<Vec<u8>> = None;
     let mut fonts = std::collections::HashMap::new();
     let mut content_rect = None;
-    for op in ops {
+    let mut queue: std::collections::VecDeque<Value> = ops.iter().cloned().collect();
+    let mut deferred: Vec<Value> = Vec::new();
+    loop {
+        // `None` ends the list while overlays are still deferred.
+        let op = match queue.pop_front() {
+            Some(op) => Some(op),
+            None if !deferred.is_empty() => None,
+            None => break,
+        };
+        let end = op.is_none();
+        let op = &op.unwrap_or(Value::Null);
         let typ = op["type"].as_str().unwrap_or("");
+        if is_overlay(op) {
+            deferred.push(op.clone());
+            continue;
+        }
+        // Without a background, overlays are drawn before the next transform (or at the end) on a canvas
+        // grown with white where they leave it; a following crop is given in the same source coordinates.
+        if !deferred.is_empty() && (end || ["crop", "resize", "rotate", "flip"].contains(&typ)) {
+            let base = take_rgba(&mut img, &mut png)?;
+            let (bw, bh) = base.dimensions();
+            let [l, t, r, b] = overlay_growth(&deferred, 0., 0., bw as f64, bh as f64);
+            if l + t + r + b > 0 {
+                let (nw, nh) = (bw + l + r, bh + t + b);
+                if nw as u64 * nh as u64 > 100_000_000 {
+                    return Err(err("Annotated canvas too large"));
+                }
+                let mut canvas = RgbaImage::from_pixel(nw, nh, image::Rgba([255, 255, 255, 255]));
+                image::imageops::overlay(&mut canvas, &base, l as i64, t as i64);
+                img = canvas.into();
+                content_rect = Some(
+                    json!({"x":l,"y":t,"w":bw,"h":bh,"sourceX":0,"sourceY":0,"sourceW":bw,"sourceH":bh}),
+                );
+            } else {
+                img = base.into();
+            }
+            let (dx, dy) = (l as f64, t as f64);
+            let mut next: Vec<Value> = deferred.drain(..).map(|o| translated(&o, dx, dy)).collect();
+            if !end {
+                next.push(if typ == "crop" {
+                    translated(op, dx, dy)
+                } else {
+                    op.clone()
+                });
+            }
+            for o in next.into_iter().rev() {
+                queue.push_front(o);
+            }
+            continue;
+        }
         if ["redact", "pixelate", "highlight", "spotlight", "blur"].contains(&typ) {
             let mut rgba = take_rgba(&mut img, &mut png)?;
             raster_op(&mut rgba, op)?;
@@ -451,8 +632,17 @@ fn render(input: &Path, ops: &Value, output: &Path) -> Result<Option<Value>> {
             continue;
         }
         if typ == "background" {
-            let (result, rect) = background::compose(&take_rgba(&mut img, &mut png)?, op)?;
+            let overlays = std::mem::take(&mut deferred);
+            let (result, rect) =
+                background::compose_grown(&take_rgba(&mut img, &mut png)?, op, &|tx, ty, w, h| {
+                    overlay_growth(&overlays, tx as f64, ty as f64, w as f64, h as f64)
+                })?;
             img = result.into();
+            let dx = n(&rect, "x", 0.) - n(&rect, "sourceX", 0.);
+            let dy = n(&rect, "y", 0.) - n(&rect, "sourceY", 0.);
+            for o in overlays.iter().rev() {
+                queue.push_front(translated(o, dx, dy));
+            }
             content_rect = Some(rect);
             continue;
         }
@@ -1377,6 +1567,32 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn overlays_grow_only_the_sides_they_cross() {
+        let arrow = json!({"type":"arrow","x":-40,"y":10,"x2":50,"y2":10,"width":4,"overlay":true});
+        // The tail crosses the left edge: ink (half stroke times 9) plus the margin; nothing else grows.
+        assert_eq!(
+            overlay_growth(std::slice::from_ref(&arrow), 0., 0., 100., 100.),
+            [82, 0, 0, 0]
+        );
+        // Inside the canvas (e.g. on background padding) nothing grows, even if the ink touches the edge.
+        assert_eq!(
+            overlay_growth(std::slice::from_ref(&arrow), 48., 48., 196., 196.),
+            [0; 4]
+        );
+        let rect = json!({"type":"rectangle","x":0,"y":0,"w":100,"h":100,"overlay":true});
+        assert_eq!(overlay_growth(&[rect], 0., 0., 100., 100.), [0; 4]);
+        assert!(!is_overlay(&json!({"type":"redact","overlay":true})));
+        let moved = translated(
+            &json!({"type":"freehand","overlay":true,"points":[{"x":1,"y":2}]}),
+            5.,
+            7.,
+        );
+        assert_eq!(
+            moved,
+            json!({"type":"freehand","x":5.,"y":7.,"points":[{"x":6.,"y":9.}]})
+        );
+    }
     #[test]
     fn refuses_external_delete_and_bad_drawing_color() {
         let p =
