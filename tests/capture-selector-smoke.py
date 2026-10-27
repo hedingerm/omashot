@@ -47,11 +47,15 @@ ShellRoot {
     geometry=result.stdout.split('SELECTED=',1)[1].splitlines()[0].strip()
     expected=f"{int(snapshot['originX'])+65},{int(snapshot['originY'])+65} 110x100"
     assert geometry==expected,(geometry,expected)
+    # A stale slurp selection must not survive a frozen selection for repeat-last-area.
+    (temp/'data/omashot/.last-selection').write_text('0,0 50x40')
     captured=command('capture-frozen',raw,geometry)
     scale=snapshot['scale'];x=65;y=65
     assert captured['width']==math.ceil((x+110)*scale)-math.floor(x*scale),captured
     assert captured['height']==math.ceil((y+100)*scale)-math.floor(y*scale),captured
     assert not raw.exists(), 'Frozen screenshot must be removed after committing'
+    repeated=command('capture','repeat')
+    assert abs(repeated['width']-captured['width'])<=1 and abs(repeated['height']-captured['height'])<=1,(repeated,captured)
     # Cancellation emits exactly once, with Escape accepted, and removes only the raw snapshot.
     cancelled=command('snapshot');env['OMASHOT_SNAPSHOT']=json.dumps(cancelled)
     harness.write_text('''import QtQuick
@@ -64,5 +68,5 @@ ShellRoot {
     result=subprocess.run(['qs','-p',str(harness)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=10)
     assert result.returncode==0 and 'CANCELLED' in result.stdout and not any(w in result.stdout for w in ['TEST_ERROR=','ReferenceError','TypeError','ERROR:']),result.stdout
     command('snapshot-cancel',cancelled['path']);assert not Path(cancelled['path']).exists()
-    assert len(command('history'))==1, 'Cancellation must not add a history capture'
+    assert len(command('history'))==2, 'Cancellation must not add a history capture'
 print('PASS: live frozen selector, capture on release, coordinate mapping, physical crop and cancellation')

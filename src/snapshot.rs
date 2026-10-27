@@ -206,6 +206,7 @@ pub fn save(path: &str, geometry: &str) -> Result<Value> {
     } else {
         crop.save(&dest)?;
     }
+    fs::write(data().join(".last-selection"), geometry)?;
     cancel(path)?;
     meta(&dest)
 }
