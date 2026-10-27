@@ -363,6 +363,9 @@ Rectangle {
     function resetSource() {
         if (!initialized)
             return;
+        // Text still being typed belongs to the capture being left, so it is committed and flushed with it.
+        if (textEditing)
+            finishText(true);
         if (loadedPath && savedOperations && JSON.stringify(operations) !== savedOperations)
             enqueueSave(loadedPath, basePath, JSON.stringify(operations));
         autosaveTimer.stop();

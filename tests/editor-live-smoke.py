@@ -56,7 +56,7 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:900;implicitHeight:700
   onError:function(message){console.error("TEST_ERROR="+message);Qt.quit()}
   onSaved:function(path){console.error("TEST_ERROR=unexpected finish");Qt.quit()}
   onAutosaved:function(path){saves++;console.log("AUTOSAVED="+path)
-   if(saves===1){edit.add({type:"filled",x:10,y:10,w:30,h:30,color:"#00ff00"});edit.sourcePath=Quickshell.env("OMASHOT_SECOND")}
+   if(saves===1){edit.add({type:"filled",x:10,y:10,w:30,h:30,color:"#00ff00"});edit.editText(60,60,-1);edit.inlineEditor.text="Typed";edit.sourcePath=Quickshell.env("OMASHOT_SECOND");if(edit.textEditing){console.error("TEST_ERROR=text editor stays open on the next capture");Qt.quit()}}
    else if(saves===2)Qt.quit()}}
  Timer {interval:50;repeat:true;running:true;property bool done:false
   onTriggered:{if(done||edit.busy||edit.savedOperations==="")return;done=true;edit.add({type:"filled",x:300,y:200,w:50,h:50,color:"#ff0000"})}}
@@ -67,9 +67,9 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:900;implicitHeight:700
  log=out.stdout+out.stderr
  assert 'TEST_ERROR' not in log and log.count('AUTOSAVED='+first)==2,log[-4000:]
  project=json.loads(subprocess.check_output([str(binary),'project',first],env=env,text=True))
- assert [o['color'] for o in project['operations']]==['#ff0000','#00ff00'],project
+ assert [o['color'] for o in project['operations'][:2]]==['#ff0000','#00ff00'] and project['operations'][2]['text']=='Typed',project
  pixel=lambda p,x,y:subprocess.check_output(['magick',p,'-format',f'%[hex:p{{{x},{y}}}]','info:'],text=True).strip()
  assert pixel(first,320,220).startswith('FF0000') and pixel(first,20,20).startswith('00FF00'),(pixel(first,320,220),pixel(first,20,20))
  assert pixel(project['source'],320,220).startswith('5865F2'),'original pixels kept in the sidecar'
  assert not pathlib.Path(second).with_suffix('.project.json').exists(),'untouched capture stays unsaved'
-print('PASS: draw, move, resize, undo/redo, drafts, background and transforms show live in the same tick; live layout matches the exact render; edits autosave in place and flush when leaving a capture')
+print('PASS: draw, move, resize, undo/redo, drafts, background and transforms show live in the same tick; live layout matches the exact render; edits (including text being typed) autosave in place and flush when leaving a capture')
