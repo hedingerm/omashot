@@ -192,7 +192,7 @@ You can also bind commands by hand in `~/.config/hypr/bindings.lua`, e.g. `o.bin
 - In area selection, drag to select; the capture is taken as soon as you release. <kbd>Esc</kbd> or right-click cancels.
 - Turn off desktop freezing in Preferences to use `slurp` instead.
 - Enable isolated window capture to export the window's own buffer with transparency (PNG/WebP).
-- New captures appear as quick-access thumbnails. Hover for copy/save and more, or drag one into another app.
+- New captures appear as quick-access thumbnails, all the same 16:10 shape. The corner icons dismiss, pin, annotate or hide them; hover for Copy and Save, or drag one into another app.
 
 </details>
 

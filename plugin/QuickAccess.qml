@@ -100,7 +100,7 @@ Item {
                         property bool preparingDrag: false
                         readonly property bool showActions: hover.hovered && !preparingDrag && !dragArea.drag.active
                         width: stack.width
-                        height: Math.max(96, Math.min(width * 0.85, width * Math.max(1, modelData.height || 90) / Math.max(1, modelData.width || 160)))
+                        height: Math.round(width * 10 / 16)
                         radius: Theme.radius(9)
                         color: Theme.surface
                         border.width: 1
@@ -222,7 +222,7 @@ Item {
                             }
                             iconName: "close"
                             text: "Dismiss this preview"
-                            visible: card.showActions
+                            visible: !card.preparingDrag && !dragArea.drag.active
                             onClicked: root.dismissRequested(card.modelData.id)
                         }
                         CornerButton {
@@ -233,7 +233,7 @@ Item {
                             }
                             iconName: "pin"
                             text: "Pin screenshot"
-                            visible: card.showActions
+                            visible: !card.preparingDrag && !dragArea.drag.active
                             onClicked: root.pinRequested(card.modelData.path)
                         }
                         CornerButton {
@@ -244,7 +244,7 @@ Item {
                             }
                             iconName: "text"
                             text: "Annotate"
-                            visible: card.showActions
+                            visible: !card.preparingDrag && !dragArea.drag.active
                             onClicked: root.annotateRequested(card.modelData.path)
                         }
                         CornerButton {
@@ -255,7 +255,7 @@ Item {
                             }
                             iconName: "chevron"
                             text: "Temporarily hide previews"
-                            visible: card.showActions
+                            visible: !card.preparingDrag && !dragArea.drag.active
                             onClicked: root.hideTemporarily()
                         }
                         Timer {
