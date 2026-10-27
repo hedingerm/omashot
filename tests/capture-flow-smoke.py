@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix='omashot-capture-flow-') as td:
     wrapper.chmod(0o755);env['OMASHOT_BACKEND']=str(wrapper)
     exports=td/'exports';exports.mkdir()
     def backend(*args):return json.loads(subprocess.check_output([str(BIN),*map(str,args)],env=env,text=True))
-    backend('config',json.dumps({'retention_days':0,'show_overlay':True,'copy_after_capture':True,'save_after_capture':True,'pin_after_capture':True,'export_directory':str(exports),'overlay_size':160}))
+    backend('config',json.dumps({'retention_days':0,'show_overlay':True,'save_after_capture':True,'pin_after_capture':True,'export_directory':str(exports),'overlay_size':160}))
     noise=td/'noise.ppm';rng=random.Random(772);noise.write_bytes(b'P6\n900 2800\n255\n'+rng.randbytes(900*2800*3))
     scene=td/'noise.png';subprocess.run(['magick',str(noise),str(scene)],check=True)
     env['CAPTURE_FLOW_IMAGE']=str(scene)

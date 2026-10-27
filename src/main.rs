@@ -60,7 +60,7 @@ fn config_path() -> PathBuf {
         .join("omashot/config.json")
 }
 fn default_config() -> Value {
-    json!({"delay":0,"cursor":false,"format":"png","ocr_language":"eng","retention_days":30,"hide_desktop_icons":false,"desktop_hide_argv":[],"desktop_restore_argv":[],"show_overlay":true,"copy_after_capture":false,"save_after_capture":false,"annotate_after_capture":false,"pin_after_capture":false,"export_directory":"","overlay_size":240,"overlay_screen":"active","dismiss_after_drop":true,"window_transparent":false,"freeze_capture":true,"show_crosshair":true,"show_magnifier":true,"corners":"auto"})
+    json!({"delay":0,"cursor":false,"format":"png","ocr_language":"eng","retention_days":30,"hide_desktop_icons":false,"desktop_hide_argv":[],"desktop_restore_argv":[],"show_overlay":true,"save_after_capture":false,"annotate_after_capture":false,"pin_after_capture":false,"export_directory":"","overlay_size":240,"overlay_screen":"active","dismiss_after_drop":true,"window_transparent":false,"freeze_capture":true,"show_crosshair":true,"show_magnifier":true,"corners":"auto"})
 }
 fn config() -> Value {
     let mut c = fs::read(config_path())

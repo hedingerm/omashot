@@ -387,8 +387,7 @@ Item {
             quickOpened = true;
         } else
             quickOpened = false;
-        if (preferences.copy_after_capture)
-            queueCaptureAction(["copy", data.path], "post-copy");
+        queueCaptureAction(["copy", data.path], "post-copy");
         if (preferences.save_after_capture && preferences.export_directory) {
             let destination = String(preferences.export_directory).replace(/\/$/, "") + "/" + data.path.split("/").pop();
             queueCaptureAction(["export", data.path, destination], "post-save");
@@ -577,7 +576,6 @@ Item {
                 prefTimeout.value = data.overlay_timeout || 0;
                 prefPosition.currentIndex = ["bottom-right", "bottom-left", "top-right", "top-left"].indexOf(data.overlay_position || "bottom-right");
                 prefShowOverlay.checked = data.show_overlay !== false;
-                prefAutoCopy.checked = !!data.copy_after_capture;
                 prefAutoSave.checked = !!data.save_after_capture;
                 prefAutoEdit.checked = !!data.annotate_after_capture;
                 prefAutoPin.checked = !!data.pin_after_capture;
@@ -625,8 +623,11 @@ Item {
                 root.editing = false;
                 if (root.job === "capture") {
                     root.receiveCapture(data);
-                } else
+                } else {
+                    if (root.job === "scroll-finish")
+                        root.queueCaptureAction(["copy", data.path], "post-copy");
                     root.opened = true;
+                }
             } else if (root.job === "delete" || root.job === "settings-save")
                 Qt.callLater(root.refresh);
         }
@@ -1364,7 +1365,7 @@ Item {
                 c.overlay_timeout = prefTimeout.value;
                 c.overlay_position = ["bottom-right", "bottom-left", "top-right", "top-left"][prefPosition.currentIndex];
                 c.show_overlay = prefShowOverlay.checked;
-                c.copy_after_capture = prefAutoCopy.checked;
+                delete c.copy_after_capture;
                 c.save_after_capture = prefAutoSave.checked;
                 c.annotate_after_capture = prefAutoEdit.checked;
                 c.pin_after_capture = prefAutoPin.checked;
@@ -1497,10 +1498,6 @@ Item {
                         CheckBox {
                             id: prefShowOverlay
                             text: "Show quick access"
-                        }
-                        CheckBox {
-                            id: prefAutoCopy
-                            text: "Copy"
                         }
                         CheckBox {
                             id: prefAutoSave
