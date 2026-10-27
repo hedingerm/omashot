@@ -1379,10 +1379,12 @@ Item {
                 root.saveShortcuts();
             }
             ScrollView {
+                id: settingsScroll
                 anchors.fill: parent
                 contentWidth: availableWidth
                 ColumnLayout {
-                    width: settings.availableWidth
+                    // keep controls clear of the overlaid scrollbar, which otherwise eats SpinBox up-arrow clicks
+                    width: settingsScroll.availableWidth - settingsScroll.effectiveScrollBarWidth
                     spacing: 12
                     Label {
                         text: "Expired captures are cleaned automatically; exported files are kept."
