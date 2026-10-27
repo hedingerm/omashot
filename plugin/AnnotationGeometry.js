@@ -89,7 +89,8 @@ function sceneLayout(w,h,bg,balance,overlays){
     var fw=b.w+inset*2,fh=b.h+inset*2,W=fw+pad*2,H=fh+pad*2,aspect=clamp(num(bg,'aspect_ratio',0),0,10),a=typeof bg.alignment==='string'?bg.alignment:'center'
     if(aspect>.1){if(W/H>aspect)H=Math.ceil(W/aspect);else W=Math.ceil(H*aspect)}
     var x=Math.floor((W-fw)/2),y=Math.floor((H-fh)/2)
-    if(a.indexOf('left')>=0)x=pad;if(a.indexOf('right')>=0)x=W-fw-pad;if(a.indexOf('top')>=0)y=pad;if(a.indexOf('bottom')>=0)y=H-fh-pad
+    var edge=function(spare){return bg.alignment_version===2?Math.min(pad,spare-pad-Math.ceil(pad/2)):pad},mx=edge(W-fw),my=edge(H-fh)
+    if(a.indexOf('left')>=0)x=mx;if(a.indexOf('right')>=0)x=W-fw-mx;if(a.indexOf('top')>=0)y=my;if(a.indexOf('bottom')>=0)y=H-fh-my
     var offset=trunc(clamp(num(bg,'shadow_offset',8),-100,100))
     if(auto&&a==='center'&&H>fh+pad*2)y=clamp(y-trunc(offset/2),pad,H-fh-pad)
     g=growth(overlays||[],x+inset-b.x,y+inset-b.y,W,H);x+=g.l;y+=g.t;W+=g.l+g.r;H+=g.t+g.b

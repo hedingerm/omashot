@@ -337,27 +337,33 @@ pub fn compose_grown(
     let alignment = op["alignment"].as_str().unwrap_or("center");
     let mut x = (w - frame_w) / 2;
     let mut y = (h - frame_h) / 2;
+    // v2: an axis without aspect-ratio slack still moves, down to half the padding on the aligned side.
+    let edge = |spare: u32| match op["alignment_version"].as_u64() {
+        Some(2) => pad.min(spare - pad - pad.div_ceil(2)),
+        _ => pad,
+    };
+    let (mx, my) = (edge(w - frame_w), edge(h - frame_h));
     match alignment {
         "top-left" => {
-            x = pad;
-            y = pad;
+            x = mx;
+            y = my;
         }
-        "top" => y = pad,
+        "top" => y = my,
         "top-right" => {
-            x = w - frame_w - pad;
-            y = pad;
+            x = w - frame_w - mx;
+            y = my;
         }
-        "left" => x = pad,
+        "left" => x = mx,
         "center" => {}
-        "right" => x = w - frame_w - pad,
+        "right" => x = w - frame_w - mx,
         "bottom-left" => {
-            x = pad;
-            y = h - frame_h - pad;
+            x = mx;
+            y = h - frame_h - my;
         }
-        "bottom" => y = h - frame_h - pad,
+        "bottom" => y = h - frame_h - my,
         "bottom-right" => {
-            x = w - frame_w - pad;
-            y = h - frame_h - pad;
+            x = w - frame_w - mx;
+            y = h - frame_h - my;
         }
         _ => return Err(err("Invalid background alignment")),
     }
@@ -570,6 +576,28 @@ mod tests {
         )
         .unwrap();
         assert!(top["y"].as_u64() < bottom["y"].as_u64());
+        let auto = |alignment: &str, version: u64| {
+            let op = json!({"padding":11,"alignment":alignment,"alignment_version":version,"shadow":false});
+            let (bg, rect) = compose(&source, &op).unwrap();
+            (
+                bg.dimensions(),
+                rect["x"].as_u64().unwrap(),
+                rect["y"].as_u64().unwrap(),
+            )
+        };
+        assert_eq!(auto("top-left", 1), ((62, 52), 11, 11));
+        assert_eq!(auto("top-left", 2), ((62, 52), 5, 5));
+        assert_eq!(auto("bottom-right", 2), ((62, 52), 17, 17));
+        assert_eq!(auto("center", 2), ((62, 52), 11, 11));
+        let (_, wide) = compose(
+            &source,
+            &json!({"padding":10,"aspect_ratio":1,"alignment":"top-left","alignment_version":2,"shadow":false}),
+        )
+        .unwrap();
+        assert_eq!(
+            (wide["x"].as_u64(), wide["y"].as_u64()),
+            (Some(5), Some(10))
+        );
     }
     #[test]
     fn wallpaper_blur_and_shadow_are_real_pixels() {

@@ -63,6 +63,7 @@ Rectangle {
             shadow_offset: 8,
             blur: 0,
             alignment: "center",
+            alignment_version: 2,
             auto_balance: true,
             aspect_ratio: 0,
             image_path: ""
@@ -77,6 +78,8 @@ Rectangle {
             });
         if (operation && operation.gradient_version === undefined)
             next.gradient_version = 1;
+        if (operation && operation.alignment_version === undefined)
+            next.alignment_version = 1;
         settings = next;
         backgroundEnabled = !!operation;
         restoring = false;
@@ -84,6 +87,8 @@ Rectangle {
     function update(key, value) {
         var next = Object.assign({}, settings);
         next[key] = value;
+        if (key === "alignment")
+            next.alignment_version = 2;
         if (key === "mode" && value === "blurred" && next.blur === 0)
             next.blur = 24;
         settings = next;
