@@ -50,7 +50,7 @@ function resized(op,key,x,y){
     if(key.indexOf('n')>=0)top=Math.min(y,bottom-2);if(key.indexOf('s')>=0)bottom=Math.max(y,top+2)
     var sx=(right-left)/b.w,sy=(bottom-top)/b.h
     if(op.type==='step'){n.x=(left+right)/2;n.y=(top+bottom)/2;n.size=Math.max(10,(right-left)/1.6)}
-    else if(op.type==='text'){n.x=left;n.y=top;n.size=Math.max(10,Math.min(144,(op.size||28)*Math.max(sx,sy)));n.w=0;n.h=0}
+    else if(op.type==='text'){n.x=left;n.y=top;n.size=Math.max(10,Math.min(500,(op.size||28)*Math.max(sx,sy)));n.w=0;n.h=0}
     else if(op.type==='freehand'){n.points=op.points.map(function(p){return{x:left+(p.x-b.x)*sx,y:top+(p.y-b.y)*sy}});n.x=left;n.y=top;n.w=right-left;n.h=bottom-top}
     else{n.x=left;n.y=top;n.w=right-left;n.h=bottom-top}
     return n

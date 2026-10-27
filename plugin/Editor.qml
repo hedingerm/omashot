@@ -114,7 +114,7 @@ Rectangle {
             ink = s.ink;
         if (number(s.stroke_width, 1, 30))
             strokeWidth = s.stroke_width;
-        if (number(s.text_size, 10, 144))
+        if (number(s.text_size, 10, 500))
             textSize = Math.round(s.text_size);
         if (textStyles.indexOf(s.text_style) >= 0)
             textStyle = s.text_style;
@@ -1395,7 +1395,7 @@ Rectangle {
                     SpinBox {
                         id: sizeSpin
                         from: root.textOptions ? 10 : 1
-                        to: root.textOptions ? 144 : 30
+                        to: root.textOptions ? 500 : 30
                         value: root.textOptions ? root.textSize : root.strokeWidth
                         editable: true
                         wheelEnabled: true
