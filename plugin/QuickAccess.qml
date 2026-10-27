@@ -9,6 +9,7 @@ import Quickshell.Hyprland
 Item {
     id: root
     property var captures: []
+    property var imageRevisions: ({})
     property bool opened: false
     property bool suspended: false
     property bool collapsed: false
@@ -114,7 +115,7 @@ Item {
                             id: thumb
                             anchors.fill: parent
                             anchors.margins: 1
-                            source: "file://" + card.modelData.path
+                            source: "file://" + card.modelData.path + (root.imageRevisions[card.modelData.path] ? "?v=" + root.imageRevisions[card.modelData.path] : "")
                             fillMode: Image.PreserveAspectFit
                             sourceSize.width: root.thumbnailWidth * 2
                             asynchronous: true

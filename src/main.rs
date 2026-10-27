@@ -1148,6 +1148,15 @@ fn session_file(id: &str) -> Result<PathBuf> {
     }
     Ok(data().join(format!(".scroll-{id}.json")))
 }
+fn history_image(path: &str) -> Result<PathBuf> {
+    let p = checked(path)?;
+    if p.parent() != Some(fs::canonicalize(data())?.as_path())
+        || !storage::managed_name(&p.file_name().unwrap_or_default().to_string_lossy())
+    {
+        return Err(err("Only history images may be changed"));
+    }
+    Ok(p)
+}
 fn argument(args: &[String], i: usize) -> Result<&str> {
     args.get(i)
         .map(String::as_str)
@@ -1169,7 +1178,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
     }
     match argument(a, 0)? {
         "help" | "--help" => Ok(
-            json!({"commands":["capture region|repeat|window|active|fullscreen [--delay N] [--cursor]","import PATH","history","cleanup","snapshot","capture-frozen PATH GEOMETRY","snapshot-cancel PATH","backgrounds","wallpaper import PATH|list|delete PATH","copy PATH","ocr PATH","qr PATH","recognize PATH","export PATH DEST","delete PATH","render INPUT JSON_OR_FILE OUTPUT_OR_DASH_OR_--preview","scroll start [--geometry G] [--horizontal]","scroll append SESSION","scroll finish SESSION","scroll cancel SESSION","project IMAGE","config [JSON]","bindings [set JSON|remove]"],"version":env!("CARGO_PKG_VERSION")}),
+            json!({"commands":["capture region|repeat|window|active|fullscreen [--delay N] [--cursor]","import PATH","history","cleanup","snapshot","capture-frozen PATH GEOMETRY","snapshot-cancel PATH","backgrounds","wallpaper import PATH|list|delete PATH","copy PATH","ocr PATH","qr PATH","recognize PATH","export PATH DEST","delete PATH","render INPUT JSON_OR_FILE OUTPUT_OR_DASH_OR_--preview|--save HISTORY_IMAGE","scroll start [--geometry G] [--horizontal]","scroll append SESSION","scroll finish SESSION","scroll cancel SESSION","project IMAGE","config [JSON]","bindings [set JSON|remove]"],"version":env!("CARGO_PKG_VERSION")}),
         ),
         "capture" => {
             let mode = argument(a, 1)?;
@@ -1290,13 +1299,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
             Ok(json!(entries))
         }
         "delete" => {
-            let p = checked(argument(a, 1)?)?;
-            if p.parent() != Some(fs::canonicalize(data())?.as_path())
-                || !storage::managed_name(&p.file_name().unwrap_or_default().to_string_lossy())
-            {
-                return Err(err("Only history images may be deleted"));
-            }
-            storage::remove_capture(&p)?;
+            storage::remove_capture(&history_image(argument(a, 1)?)?)?;
             Ok(json!({"ok":true}))
         }
         "copy" => {
@@ -1374,7 +1377,7 @@ fn dispatch(a: &[String]) -> Result<Value> {
             meta(&dest)
         }
         "render" => {
-            let p = checked(argument(a, 1)?)?;
+            let mut p = checked(argument(a, 1)?)?;
             let s = argument(a, 2)?;
             let operations_text = if s.trim_start().starts_with('[') {
                 s.to_owned()
@@ -1382,43 +1385,80 @@ fn dispatch(a: &[String]) -> Result<Value> {
                 fs::read_to_string(s)?
             };
             let mut ops: Value = serde_json::from_str(&operations_text)?;
-            let preview = argument(a, 3)? == "--preview";
+            let mode = argument(a, 3)?;
+            let preview = mode == "--preview";
+            // `--save TARGET` autosaves an edit over its own history capture; the original pixels stay in the source sidecar.
+            let target = if mode == "--save" {
+                Some(history_image(argument(a, 4)?)?)
+            } else {
+                None
+            };
             let dest = if preview {
                 unique(".preview")
-            } else if argument(a, 3)? == "-" {
+            } else if let Some(t) = &target {
+                let name = t.file_name().unwrap_or_default().to_string_lossy();
+                let ext = t.extension().unwrap_or_default().to_string_lossy();
+                let temp = t.with_file_name(format!(".{name}.saving.{ext}"));
+                let _ = fs::remove_file(&temp);
+                temp
+            } else if mode == "-" {
                 unique("edited")
             } else {
-                PathBuf::from(argument(a, 3)?)
+                PathBuf::from(mode)
             };
             if dest.exists() && !preview {
                 return Err(err("Output already exists"));
             }
+            let output = target.clone().unwrap_or_else(|| dest.clone());
+            let source = original_path(&output);
+            // A saved project's pixels are already edited; always start again from the original.
+            if target.as_ref() == Some(&p)
+                && output.with_extension("project.json").exists()
+                && source.is_file()
+            {
+                p = source.clone();
+            }
             let content_rect = render(&p, &ops, &dest)?;
             if !preview {
-                let source = original_path(&dest);
-                image::open(&p)?.save(&source)?;
+                if p != source {
+                    image::open(&p)?.save(&source)?;
+                }
                 if let Some(items) = ops.as_array_mut() {
-                    for (index, item) in items.iter_mut().enumerate() {
+                    let mut layers = Vec::new();
+                    for (index, item) in items.iter().enumerate() {
                         if item["type"].as_str() == Some("image") {
                             let path = checked(
                                 item["path"]
                                     .as_str()
                                     .ok_or_else(|| err("Image layer requires path"))?,
                             )?;
-                            let asset =
-                                storage::asset_dir(&dest).join(format!("layer-{index}.png"));
-                            fs::create_dir_all(asset.parent().unwrap())?;
-                            image::open(path)?.save(&asset)?;
-                            item["path"] = json!(asset);
+                            layers.push((index, image::open(path)?));
                         }
+                    }
+                    // Layers are read before the asset folder is rewritten, since a resave reads them from there.
+                    let assets = storage::asset_dir(&output);
+                    if assets.is_dir() && !assets.is_symlink() {
+                        fs::remove_dir_all(&assets)?;
+                    }
+                    for (index, layer) in layers {
+                        let asset = assets.join(format!("layer-{index}.png"));
+                        fs::create_dir_all(&assets)?;
+                        layer.save(&asset)?;
+                        items[index]["path"] = json!(asset);
                     }
                 }
                 fs::write(
-                    dest.with_extension("project.json"),
+                    output.with_extension("project.json"),
                     serde_json::to_vec_pretty(&json!({"source":source,"operations":ops}))?,
                 )?;
+                if target.is_some() {
+                    fs::rename(&dest, &output)?;
+                }
             }
-            let mut result = meta(&dest)?;
+            let mut result = meta(&output)?;
+            if !preview {
+                result["source"] = json!(source);
+            }
             if let Some(rect) = content_rect {
                 result["contentRect"] = rect;
             }

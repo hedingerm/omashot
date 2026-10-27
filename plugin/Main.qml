@@ -227,6 +227,16 @@ Item {
             }
         }
     }
+    // Edits overwrite captures in place; a per-path revision in the URL makes cached thumbnails reload.
+    property var imageRevisions: ({})
+    function touchImage(path) {
+        var r = Object.assign({}, imageRevisions);
+        r[path] = (r[path] || 0) + 1;
+        imageRevisions = r;
+    }
+    function imageUrl(path) {
+        return path ? "file://" + path + (imageRevisions[path] ? "?v=" + imageRevisions[path] : "") : "";
+    }
     function refresh() {
         if (worker.running)
             historyRefreshTimer.restart();
@@ -745,7 +755,7 @@ Item {
                 if (window.fullscreen)
                     window.fullscreen = false;
                 else if (root.editing)
-                    cancelEdits.open();
+                    editor.finish();
                 else
                     root.close();
             }
@@ -970,7 +980,7 @@ Item {
                                     Image {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        source: "file://" + modelData.path
+                                        source: root.imageUrl(modelData.path)
                                         fillMode: Image.PreserveAspectFit
                                         asynchronous: true
                                         sourceSize.width: 360
@@ -1047,7 +1057,7 @@ Item {
                             y: (previewViewport.contentHeight - height) / 2
                             width: root.previewZoom ? sourceSize.width * root.previewZoom : Math.max(1, previewViewport.width - 64)
                             height: root.previewZoom ? sourceSize.height * root.previewZoom : Math.max(1, previewViewport.height - 64)
-                            source: root.current ? "file://" + root.current : ""
+                            source: root.imageUrl(root.current)
                             fillMode: Image.PreserveAspectFit
                             cache: false
                             asynchronous: true
@@ -1100,7 +1110,9 @@ Item {
                         visible: root.editing
                         sourcePath: root.editing ? root.current : ""
                         backend: root.backend
-                        onCloseRequested: cancelEdits.open()
+                        onAutosaved: function (path) {
+                            root.touchImage(path);
+                        }
                         onHistoryRequested: {
                             root.showHistory = !root.showHistory;
                             root.refresh();
@@ -1122,6 +1134,7 @@ Item {
                             root.savePreferences(c, "presets-save");
                         }
                         onSaved: function (path) {
+                            root.touchImage(path);
                             root.current = path;
                             root.editing = false;
                             root.status = "Done";
@@ -1301,14 +1314,6 @@ Item {
                     onToggled: root.horizontalScroll = checked
                 }
             }
-        }
-        Dialog {
-            id: cancelEdits
-            palette: Theme.controls.palette
-            title: "Discard unsaved edits?"
-            anchors.centerIn: parent
-            standardButtons: Dialog.Discard | Dialog.Cancel
-            onDiscarded: root.editing = false
         }
         Dialog {
             id: deletion
@@ -1697,6 +1702,7 @@ Item {
     QuickAccess {
         id: quickAccess
         captures: root.quickCaptures
+        imageRevisions: root.imageRevisions
         opened: root.quickOpened
         suspended: root.capturing || scrollSurface.active
         corner: root.preferences.overlay_position || "bottom-right"
@@ -1790,7 +1796,7 @@ Item {
                 Image {
                     id: photo
                     anchors.fill: parent
-                    source: "file://" + pinWindow.modelData.path
+                    source: root.imageUrl(pinWindow.modelData.path)
                     fillMode: Image.PreserveAspectFit
                     visible: false
                     // Decode off the GUI thread at the pin's pixel size (stepped, never upscaled); keep the old frame while zooming reloads it.

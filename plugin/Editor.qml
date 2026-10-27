@@ -143,7 +143,7 @@ Rectangle {
     property var localPresets: customPresets
     onCustomPresetsChanged: localPresets = customPresets
     property string status: "Choose a tool, then draw on your screenshot"
-    property bool busy: projectProbe.running || (renderProcess.running && !previewRender)
+    property bool busy: projectProbe.running || finishing
     readonly property bool geometryChanged: operations.some(function (o) {
         return o.type === "crop" || o.type === "resize" || o.type === "rotate" || o.type === "flip";
     })
@@ -156,8 +156,12 @@ Rectangle {
     readonly property bool previewReady: displayRevision === revision && picture.status === Image.Ready && !!previewPath && picture.loaded === previewPath
     property int renderRevision: -1
     property string renderSource: ""
-    property bool previewRender: true
-    property bool savePending: false
+    // Edits autosave over the capture itself (`render --save`); its project sidecar keeps the original pixels.
+    // `savedOperations` is what the file holds once queued saves finish ("" until the project is loaded).
+    property string savedOperations: ""
+    property string loadedPath: ""
+    property var saveQueue: []
+    property bool finishing: false
     property bool initialized: false
     // The live scene draws every edit in the next frame; the exact backend render replaces it once it matches `revision`.
     property var exactRect: ({
@@ -229,9 +233,9 @@ Rectangle {
     property alias sizeControl: sizeSpin
     property alias cropToolbar: cropToolbarViewport
     signal saved(string path)
+    signal autosaved(string path)
     signal error(string message)
     signal presetsChanged(var presets)
-    signal closeRequested
     signal historyRequested
 
     // Input-to-display latency of edits (`qs ipc call omashot editorLatency`): each input waits for the first swapped frame showing it.
@@ -333,7 +337,7 @@ Rectangle {
     // A preview render of an outdated state is wasted work; stop it and render the new state when idle.
     property bool renderAborted: false
     function abortPreview() {
-        if (renderProcess.running && previewRender && !savePending) {
+        if (renderProcess.running) {
             renderAborted = true;
             renderProcess.running = false;
         }
@@ -343,6 +347,8 @@ Rectangle {
         revision++;
         if (initialized && !gestureBefore)
             previewTimer.restart();
+        if (savedOperations && !gestureBefore)
+            autosaveTimer.restart();
     }
     onBasePathChanged: {
         baseCache = {};
@@ -357,6 +363,12 @@ Rectangle {
     function resetSource() {
         if (!initialized)
             return;
+        if (loadedPath && savedOperations && JSON.stringify(operations) !== savedOperations)
+            enqueueSave(loadedPath, basePath, JSON.stringify(operations));
+        autosaveTimer.stop();
+        loadedPath = sourcePath;
+        savedOperations = "";
+        finishing = false;
         gestureBefore = null;
         gestureOriginal = null;
         basePath = sourcePath;
@@ -373,8 +385,6 @@ Rectangle {
         selectedIndex = -1;
         textEditing = false;
         cropEditing = false;
-
-        savePending = false;
         backgroundPanel.restore(null);
         applySettings();
         status = tool === "select" ? "Choose a tool, then draw on your screenshot" : "Draw " + tool + " on the screenshot";
@@ -444,6 +454,8 @@ Rectangle {
         gestureBefore = null;
         gestureOriginal = null;
         previewTimer.restart();
+        if (savedOperations)
+            autosaveTimer.restart();
         unlockView();
     }
     // While a drag may grow the canvas, the scale and the source origin's place on screen stay fixed, so the
@@ -750,6 +762,7 @@ Rectangle {
                     var project = JSON.parse(root.projectOutput);
                     if (project.source && Array.isArray(project.operations)) {
                         restored = project.saved === true || project.operations.length > 0;
+                        root.savedOperations = JSON.stringify(project.operations);
                         root.basePath = project.source;
                         root.operations = project.operations;
                         root.undone = [];
@@ -809,35 +822,113 @@ Rectangle {
         onTriggered: root.interacting ? restart() : root.startRender(true)
     }
     function render(preview) {
-        if (!preview && textEditing)
-            finishText(true);
-        if (preview) {
+        if (preview)
             previewTimer.restart();
-            return;
-        }
-        if (!sourcePath || projectProbe.running)
-            return;
-        savePending = true;
-        previewTimer.stop();
-        if (!renderProcess.running)
-            startRender(false);
+        else
+            finish();
     }
     function startRender(preview) {
-        if (!sourcePath || projectProbe.running)
+        if (!sourcePath || projectProbe.running || renderProcess.running)
             return;
-        if (renderProcess.running)
-            return;
-        previewRender = preview && !savePending;
-        if (!previewRender) {
-            savePending = false;
-            status = "Saving image…";
-        }
         renderRevision = revision;
         renderSource = sourcePath;
-        renderProcess.command = (previewRender ? ["nice", "-n", "10"] : []).concat([backend, "render", basePath, JSON.stringify(previewRender && textEditing && editingTextIndex >= 0 ? operations.filter(function (o, i) {
+        renderProcess.command = ["nice", "-n", "10", backend, "render", basePath, JSON.stringify(textEditing && editingTextIndex >= 0 ? operations.filter(function (o, i) {
                 return i !== editingTextIndex;
-            }) : operations), previewRender ? "--preview" : "-"]);
+            }) : operations), "--preview"];
         renderProcess.running = true;
+    }
+    Timer {
+        id: autosaveTimer
+        interval: 1000
+        onTriggered: root.interacting || root.textEditing ? restart() : root.autosave()
+    }
+    function autosave() {
+        var ops = JSON.stringify(operations);
+        if (savedOperations && ops !== savedOperations)
+            enqueueSave(sourcePath, basePath, ops);
+    }
+    // Saves the pending edits, then leaves the editor.
+    function finish() {
+        if (textEditing)
+            finishText(true);
+        autosaveTimer.stop();
+        finishing = true;
+        autosave();
+        settleFinish();
+    }
+    function settleFinish() {
+        if (finishing && !saveProcess.running && !saveQueue.length) {
+            finishing = false;
+            saved(sourcePath);
+        }
+    }
+    function enqueueSave(target, base, ops) {
+        if (target === sourcePath)
+            savedOperations = ops;
+        saveQueue = saveQueue.filter(function (item) {
+            return item.target !== target;
+        }).concat([{
+                target: target,
+                base: base,
+                ops: ops
+            }]);
+        pumpSaves();
+    }
+    function pumpSaves() {
+        if (saveProcess.running || !saveQueue.length)
+            return;
+        var item = saveQueue[0];
+        saveQueue = saveQueue.slice(1);
+        saveProcess.item = item;
+        saveProcess.command = [backend, "render", item.base, item.ops, "--save", item.target];
+        saveProcess.running = true;
+        if (item.target === sourcePath)
+            status = "Saving…";
+    }
+    Process {
+        id: saveProcess
+        property var item: null
+        property string result: ""
+        property string errors: ""
+        onStarted: {
+            result = "";
+            errors = "";
+        }
+        stdout: StdioCollector {
+            onStreamFinished: saveProcess.result = text
+        }
+        stderr: StdioCollector {
+            onStreamFinished: saveProcess.errors = text
+        }
+        onExited: function (code) {
+            var current = item.target === root.sourcePath;
+            try {
+                var value = JSON.parse(result);
+                if (code !== 0 || !value.path)
+                    throw new Error(value.error || errors || "Could not save image");
+                // The capture now holds edited pixels; later edits start from the original in its sidecar.
+                if (current && root.basePath !== value.source)
+                    root.basePath = value.source;
+                root.saveQueue = root.saveQueue.map(function (queued) {
+                    return queued.target === item.target && queued.base === item.target ? Object.assign({}, queued, {
+                        base: value.source
+                    }) : queued;
+                });
+                if (current)
+                    root.status = "Saved";
+                root.autosaved(item.target);
+            } catch (e) {
+                // Keep the edits marked unsaved so the next change or close retries.
+                if (current) {
+                    root.savedOperations = "[\"unsaved\"]";
+                    root.finishing = false;
+                }
+                root.status = String(e);
+                root.error(root.status);
+            }
+            root.pumpSaves();
+            root.settleFinish();
+        }
     }
     Process {
         id: renderProcess
@@ -856,64 +947,48 @@ Rectangle {
         onExited: function (code) {
             if (root.renderAborted) {
                 root.renderAborted = false;
-                if (root.savePending)
-                    Qt.callLater(function () {
-                        root.startRender(false);
-                    });
-                else
-                    previewTimer.restart();
+                previewTimer.restart();
                 return;
             }
             try {
                 var value = JSON.parse(result);
                 if (code !== 0 || !value.path)
                     throw new Error(value.error || errors || "Could not render image");
-                if (root.renderSource === root.sourcePath) {
-                    if (root.previewRender) {
-                        if (root.renderRevision === root.revision) {
-                            var rect = value.contentRect || {
-                                x: 0,
-                                y: 0,
-                                w: value.width,
-                                h: value.height
-                            };
-                            // Auto-balance trims depend on pixels; the live layout reuses the backend's latest bounds.
-                            if (rect.sourceW !== undefined && root.liveBackground)
-                                root.balance = {
-                                    x: rect.sourceX,
-                                    y: rect.sourceY,
-                                    w: rect.sourceW,
-                                    h: rect.sourceH
-                                };
-                            root.exactRect = {
-                                w: value.width,
-                                h: value.height,
-                                content: rect
-                            };
-                            root.previewPath = value.path;
-                            root.displayRevision = root.renderRevision;
-                            root.status = "All changes previewed";
+                if (root.renderSource === root.sourcePath && root.renderRevision === root.revision) {
+                    var rect = value.contentRect || {
+                        x: 0,
+                        y: 0,
+                        w: value.width,
+                        h: value.height
+                    };
+                    // Auto-balance trims depend on pixels; the live layout reuses the backend's latest bounds.
+                    if (rect.sourceW !== undefined && root.liveBackground)
+                        root.balance = {
+                            x: rect.sourceX,
+                            y: rect.sourceY,
+                            w: rect.sourceW,
+                            h: rect.sourceH
+                        };
+                    root.exactRect = {
+                        w: value.width,
+                        h: value.height,
+                        content: rect
+                    };
+                    root.previewPath = value.path;
+                    root.displayRevision = root.renderRevision;
+                    root.status = "All changes previewed";
+                    if (root.queuedAuxiliary)
+                        Qt.callLater(function () {
                             if (root.queuedAuxiliary)
-                                Qt.callLater(function () {
-                                    if (root.queuedAuxiliary)
-                                        root.auxiliary(root.queuedAuxiliary.args, root.queuedAuxiliary.message);
-                                });
-                        }
-                    } else {
-                        root.status = "Saved edited image";
-                        root.saved(value.path);
-                    }
+                                root.auxiliary(root.queuedAuxiliary.args, root.queuedAuxiliary.message);
+                        });
                 }
             } catch (e) {
                 root.queuedAuxiliary = null;
                 root.status = String(e);
                 root.error(root.status);
             }
-            if (root.savePending)
-                Qt.callLater(function () {
-                    root.startRender(false);
-                });
-            else if (root.renderRevision !== root.revision || root.renderSource !== root.sourcePath)
+            if (root.renderRevision !== root.revision || root.renderSource !== root.sourcePath)
                 previewTimer.restart();
         }
     }
@@ -1262,7 +1337,8 @@ Rectangle {
                     IconButton {
                         iconName: "close"
                         text: "Back to captures"
-                        onClicked: root.closeRequested()
+                        enabled: !root.busy
+                        onClicked: root.finish()
                     }
                     IconButton {
                         iconName: "history"
@@ -1424,20 +1500,6 @@ Rectangle {
                                     sizeSpin.apply(v);
                             }
                         }
-                    }
-                    Rectangle {
-                        width: 1
-                        Layout.preferredHeight: 24
-                        color: Theme.border
-                        Layout.leftMargin: 3
-                        Layout.rightMargin: 3
-                    }
-                    IconButton {
-                        iconName: "save"
-                        text: "Apply and save edits"
-                        selected: true
-                        enabled: !root.busy
-                        onClicked: root.render(false)
                     }
                 }
                 ScrollBar.horizontal: ScrollBar {
@@ -2037,7 +2099,7 @@ Rectangle {
                         height: 26
                         radius: Theme.radius(13)
                         color: Theme.accentSoft
-                        visible: renderProcess.running && !root.previewRender
+                        visible: root.finishing
                         Text {
                             id: renderLabel
                             anchors.centerIn: parent
@@ -2209,12 +2271,12 @@ Rectangle {
                 }
                 IconButton {
                     iconName: "check"
-                    text: "Apply and save · Ctrl+S"
+                    text: "Done · Ctrl+S"
                     size: 31
                     iconSize: 18
                     selected: true
                     enabled: !root.busy
-                    onClicked: root.render(false)
+                    onClicked: root.finish()
                 }
             }
         }
@@ -2293,6 +2355,6 @@ Rectangle {
     Shortcut {
         sequence: "Ctrl+S"
         enabled: root.visible && !root.busy
-        onActivated: root.render(false)
+        onActivated: root.finish()
     }
 }

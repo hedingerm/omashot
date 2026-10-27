@@ -45,6 +45,7 @@ with tempfile.TemporaryDirectory(prefix='omashot-ui-test-') as temp:
     assert not any(x in text for x in ['ERROR','ReferenceError','TypeError','failed to create variant']), text
     # Invoke the real editor's production add/undo/redo/render methods in a live window.
     harness = plugin / 'EditorSmoke.qml'
+    env['OMASHOT_EDIT'] = str(imported)
     harness.write_text('''import QtQuick
 import Quickshell
 ShellRoot {
@@ -52,7 +53,7 @@ ShellRoot {
         visible: true; implicitWidth: 1000; implicitHeight: 700
         Editor {
             id: edit; anchors.fill: parent
-            sourcePath: Quickshell.env("OMASHOT_FIXTURE")
+            sourcePath: Quickshell.env("OMASHOT_EDIT")
             backend: Quickshell.env("OMASHOT_BACKEND")
             onSaved: function(path) { console.log("EDITOR_SAVED=" + path); Qt.quit() }
             onError: function(message) { console.error("EDITOR_ERROR=" + message); Qt.quit() }
@@ -69,7 +70,7 @@ ShellRoot {
     result = subprocess.run(['qs','-p',str(harness)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=25)
     assert result.returncode==0 and 'EDITOR_SAVED=' in result.stdout and 'EDITOR_ERROR=' not in result.stdout, result.stdout
     saved = pathlib.Path(result.stdout.split('EDITOR_SAVED=',1)[1].splitlines()[0].strip())
-    assert saved.exists()
+    assert saved == imported, saved  # edits autosave in place
     project = json.loads(call([BIN,'project',saved],env)); assert len(project['operations'])==3 and pathlib.Path(project['source']).exists()
     exported = temp / 'export.png'
     call([BIN,'export',saved,exported],env)

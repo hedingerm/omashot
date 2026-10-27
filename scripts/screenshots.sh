@@ -53,7 +53,9 @@ done
 magick montage "$work"/tiles/*.png -tile 10x2 -geometry +8+8 -background none -depth 8 "$work/backgrounds.png"
 
 echo 'Rendering editor'
-OMASHOT_SOURCE="$work/before.png" OMASHOT_OPS=$(cat "$src/annotations.json") shot EditorShot.qml "$work/editor.png" offscreen
+# Edits autosave over history captures only, so the editor opens an imported copy.
+editor_source=$("$backend" import "$work/before.png" | python3 -c 'import json, sys; print(json.load(sys.stdin)["path"])')
+OMASHOT_SOURCE="$editor_source" OMASHOT_OPS=$(cat "$src/annotations.json") shot EditorShot.qml "$work/editor.png" offscreen
 
 echo 'Rendering launcher'
 [[ -n ${WAYLAND_DISPLAY:-} ]] || { echo 'The launcher screenshot needs a Wayland session' >&2; exit 1; }

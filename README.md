@@ -88,7 +88,7 @@ OmaShot is a native screenshot tool for Omarchy, built as an Omarchy shell plugi
 
 ### The editor
 
-Icon-first toolbar on top, background styles on the side, zoom, copy, export and save in the footer.
+Icon-first toolbar on top, background styles on the side, zoom, copy, Save as… and Done in the footer. Edits save automatically.
 
 <img src="docs/screenshots/editor.png" alt="The OmaShot editor with the annotation toolbar, background styles sidebar and an annotated screenshot" width="100%">
 
@@ -201,10 +201,11 @@ You can also bind commands by hand in `~/.config/hypr/bindings.lua`, e.g. `o.bin
 
 - Use **Select** to move or resize marks; arrows have endpoint and curvature handles. Double-click text to edit it.
 - Drawing tools stay active: drag the handles of the mark you just drew to resize it, drag a mark of the same type (near its outline for shapes) to move it, and click a text with the Text tool to edit it.
-- <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> undo and redo, <kbd>Delete</kbd> removes the selection, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves to history.
+- <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> undo and redo, <kbd>Delete</kbd> removes the selection, <kbd>Ctrl</kbd>+<kbd>S</kbd> or <kbd>Esc</kbd> closes the editor.
 - <kbd>Ctrl</kbd>+scroll zooms around the pointer; drag with the middle mouse button to pan the canvas with any tool.
 - Drag another image onto the canvas to combine captures.
-- Saved captures stay editable. Reopen them from history at any time.
+- Edits save automatically into the capture itself, so history, quick access and pins show the edited image. **Save as…** writes a separate copy.
+- Captures stay editable: the original pixels are kept, so reopening a capture from history lets you change or undo every edit.
 
 </details>
 

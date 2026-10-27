@@ -8,6 +8,8 @@ with tempfile.TemporaryDirectory(prefix='omashot-object-test-') as td:
  env=dict(os.environ,QT_QPA_PLATFORM='offscreen',XDG_CONFIG_HOME=str(td/'config'),XDG_DATA_HOME=str(td/'data'),OMASHOT_BACKEND=str(binary))
  source=td/'fixture.png';layer=td/'layer.png'
  subprocess.run(['magick','-size','800x500','xc:white',str(source)],check=True)
+ # Edits autosave over history captures only, so the fixture is imported like a capture.
+ source=pathlib.Path(json.loads(subprocess.check_output([str(binary),'import',str(source)],env=env,text=True))['path'])
  subprocess.run(['magick','-size','80x50','xc:#168fce',str(layer)],check=True)
  env.update(OMASHOT_SOURCE=str(source),OMASHOT_LAYER=str(layer))
  harness=plugin/'ObjectSmoke.qml'
@@ -55,7 +57,7 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:1100;implicitHeight:800
 } }''')
  result=subprocess.run(['qs','-p',str(harness)],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=40)
  assert result.returncode==0 and 'SAVED=' in result.stdout and not any(w in result.stdout for w in ['TEST_ERROR=','ReferenceError','TypeError','ERROR:']),result.stdout
- path=pathlib.Path(result.stdout.split('SAVED=',1)[1].splitlines()[0].strip())
+ path=pathlib.Path(result.stdout.split('SAVED=',1)[1].splitlines()[0].strip());assert path==source,path
  project=json.loads(subprocess.check_output([str(binary),'project',str(path)],env=env,text=True));assert [o['type'] for o in project['operations']]==['arrow','rectangle','text','image','crop','filled'],project
  assert project['operations'][2]['text']=='After'
  asset=pathlib.Path(project['operations'][3]['path']);assert asset.exists()

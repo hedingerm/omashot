@@ -8,7 +8,9 @@ with tempfile.TemporaryDirectory(prefix='omashot-live-test-') as td:
  td=pathlib.Path(td);plugin=td/'plugin';shutil.copytree(root/'plugin',plugin)
  env=dict(os.environ,QT_QPA_PLATFORM='offscreen',XDG_CONFIG_HOME=str(td/'config'),XDG_DATA_HOME=str(td/'data'),OMASHOT_BACKEND=str(binary))
  source=td/'fixture.png';subprocess.run(['magick','-size','900x600','xc:white','-fill','#5865f2','-draw','rectangle 300,200 600,400',str(source)],check=True)
- env['OMASHOT_SOURCE']=str(source)
+ # Edits autosave over history captures only, so the fixture is imported like a capture.
+ def capture():return json.loads(subprocess.check_output([str(binary),'import',str(source)],env=env,text=True))['path']
+ env['OMASHOT_SOURCE']=capture()
  (plugin/'LiveSmoke.qml').write_text('''import QtQuick
 import Quickshell
 ShellRoot { FloatingWindow {id:win;visible:true;implicitWidth:1200;implicitHeight:800
@@ -44,4 +46,30 @@ ShellRoot { FloatingWindow {id:win;visible:true;implicitWidth:1200;implicitHeigh
  out=subprocess.run(['qs','-p',str(plugin/'LiveSmoke.qml')],env=env,capture_output=True,text=True,timeout=90)
  log=out.stdout+out.stderr
  assert 'LIVE_SMOKE_PASS' in log and 'TEST_ERROR' not in log and 'TypeError' not in log and 'ReferenceError' not in log,log[-4000:]
-print('PASS: draw, move, resize, undo/redo, drafts, background and transforms show live in the same tick; live layout matches the exact render')
+ # Autosave: edits settle into the capture itself without Done; leaving a capture flushes its pending edits.
+ first,second=capture(),capture();env.update(OMASHOT_FIRST=first,OMASHOT_SECOND=second)
+ (plugin/'AutosaveSmoke.qml').write_text('''import QtQuick
+import Quickshell
+ShellRoot { FloatingWindow {visible:true;implicitWidth:900;implicitHeight:700
+ Editor {id:edit;anchors.fill:parent;sourcePath:Quickshell.env("OMASHOT_FIRST");backend:Quickshell.env("OMASHOT_BACKEND")
+  property int saves:0
+  onError:function(message){console.error("TEST_ERROR="+message);Qt.quit()}
+  onSaved:function(path){console.error("TEST_ERROR=unexpected finish");Qt.quit()}
+  onAutosaved:function(path){saves++;console.log("AUTOSAVED="+path)
+   if(saves===1){edit.add({type:"filled",x:10,y:10,w:30,h:30,color:"#00ff00"});edit.sourcePath=Quickshell.env("OMASHOT_SECOND")}
+   else if(saves===2)Qt.quit()}}
+ Timer {interval:50;repeat:true;running:true;property bool done:false
+  onTriggered:{if(done||edit.busy||edit.savedOperations==="")return;done=true;edit.add({type:"filled",x:300,y:200,w:50,h:50,color:"#ff0000"})}}
+ Timer {interval:20000;running:true;onTriggered:{console.error("TEST_ERROR=autosave timeout");Qt.quit()}}
+}}
+''')
+ out=subprocess.run(['qs','-p',str(plugin/'AutosaveSmoke.qml')],env=env,capture_output=True,text=True,timeout=30)
+ log=out.stdout+out.stderr
+ assert 'TEST_ERROR' not in log and log.count('AUTOSAVED='+first)==2,log[-4000:]
+ project=json.loads(subprocess.check_output([str(binary),'project',first],env=env,text=True))
+ assert [o['color'] for o in project['operations']]==['#ff0000','#00ff00'],project
+ pixel=lambda p,x,y:subprocess.check_output(['magick',p,'-format',f'%[hex:p{{{x},{y}}}]','info:'],text=True).strip()
+ assert pixel(first,320,220).startswith('FF0000') and pixel(first,20,20).startswith('00FF00'),(pixel(first,320,220),pixel(first,20,20))
+ assert pixel(project['source'],320,220).startswith('5865F2'),'original pixels kept in the sidecar'
+ assert not pathlib.Path(second).with_suffix('.project.json').exists(),'untouched capture stays unsaved'
+print('PASS: draw, move, resize, undo/redo, drafts, background and transforms show live in the same tick; live layout matches the exact render; edits autosave in place and flush when leaving a capture')

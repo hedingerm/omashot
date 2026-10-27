@@ -70,6 +70,9 @@ with tempfile.TemporaryDirectory(prefix='omashot-background-test-') as directory
     svg.write_text(dashboard_svg())
     source = temp / 'dashboard.png'
     run(['magick', svg, source], env)
+    # Edits autosave over history captures only, so fixtures are imported like captures.
+    def capture(path): return Path(json.loads(run([BIN, 'import', path], env))['path'])
+    fixture, source = source, capture(source)
     wallpaper = temp / 'wallpaper.png'
     run(['magick', '-size', '600x400', 'gradient:#f79dd3-#376daa', wallpaper], env)
     screenshot = temp / 'editor.png'
@@ -133,6 +136,7 @@ ShellRoot {
     assert result.returncode == 0 and 'TEST_ERROR=' not in result.stdout and 'SAVED=' in result.stdout, result.stdout
     assert not any(word in result.stdout for word in ['ReferenceError', 'TypeError', 'ERROR:']), result.stdout
     saved = Path(result.stdout.split('SAVED=', 1)[1].splitlines()[0].strip())
+    assert saved == source, saved
     project = json.loads(run([BIN, 'project', saved], env))
     assert [op['type'] for op in project['operations']] == ['arrow', 'background'], project
     assert project['operations'][1]['padding'] == 96
@@ -163,7 +167,8 @@ ShellRoot { FloatingWindow { implicitWidth:1100;implicitHeight:800;visible:true
     # Last-used tool options and background come back on the next fresh capture; a vanished wallpaper is skipped.
     second = temp / 'second.png'
     run(['magick', '-size', '400x300', 'xc:#dde3f0', second], env)
-    env.update(OMASHOT_SOURCE=str(source), OMASHOT_SECOND=str(second))
+    # Leaving a capture autosaves it, so each phase opens a fresh one.
+    env.update(OMASHOT_SOURCE=str(capture(fixture)), OMASHOT_SECOND=str(capture(second)), OMASHOT_THIRD=str(capture(fixture)))
     harness.write_text('''import QtQuick
 import Quickshell
 ShellRoot { FloatingWindow { implicitWidth:1100;implicitHeight:800;visible:true
@@ -186,7 +191,7 @@ ShellRoot { FloatingWindow { implicitWidth:1100;implicitHeight:800;visible:true
             require(edit.operations.length===1 && bg && bg.preset===3 && bg.padding===40 && edit.backgroundControl.settings.padding===40,"Background restored")
             require(edit.contentRect.x===40,"Restored background renders");edit.undo();require(!edit.operations.length,"Restored background undoes")
             var gone=Object.assign({},edit.savedSettings);gone.background={type:"background",mode:"wallpaper",image_path:"/nonexistent/wallpaper-1.png"}
-            edit.savedSettings=gone;edit.sourcePath=Quickshell.env("OMASHOT_SOURCE");phase=3}
+            edit.savedSettings=gone;edit.sourcePath=Quickshell.env("OMASHOT_THIRD");phase=3}
         else if(phase===3){require(!edit.operations.length,"Missing wallpaper skipped");console.log("REMEMBERED");Qt.quit()}
     } }
     Timer { interval:30000;running:true;onTriggered:{console.error("TEST_ERROR=Remember timeout");Qt.quit()} }
