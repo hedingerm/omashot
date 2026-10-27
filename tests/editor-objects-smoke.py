@@ -27,6 +27,7 @@ ShellRoot { FloatingWindow {visible:true;implicitWidth:1100;implicitHeight:800
     edit.add({type:"rectangle",x:400,y:100,w:100,h:80,width:4,color:"#0055cc"});
     edit.add({type:"text",x:100,y:300,text:"Before",size:24,color:"#111111"});phase=1;
    }else if(phase===1){
+    edit.tool="rectangle";require(edit.drawToolHit(401,140)===1&&edit.drawToolHit(450,140)===-1,"Rectangle tool edits outlines, draws inside");edit.tool="text";require(edit.drawToolHit(110,310)===2,"Text tool edits text");edit.tool="arrow";require(edit.drawToolHit(401,140)===-1,"Other types draw");edit.tool="select";
     require(edit.selectAt(50,46)===0,"Arrow hit test");edit.beginGesture(0,40,40);edit.moveGesture(70,90);edit.endGesture();
     require(edit.operations[0].x===70&&edit.operations[0].y===90,"Arrow move");edit.undo();require(edit.operations[0].x===40,"Move undo");edit.redo();require(edit.operations[0].x===70,"Move redo");
     edit.beginGesture(0,0,0);edit.resizeGesture("curve",200,20);edit.endGesture();require(edit.operations[0].cx===190&&edit.operations[0].cy===-135,"Quadratic midpoint transform");

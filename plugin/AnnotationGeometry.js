@@ -27,6 +27,14 @@ function hit(op,x,y,tolerance) {
     if(op.type==='freehand'&&op.points){for(var j=1;j<op.points.length;j++)if(segmentDistance(p,op.points[j-1],op.points[j])<tolerance*1.5)return true;return false}
     var b=bounds(op);return x>=b.x-tolerance&&x<=b.x+b.w+tolerance&&y>=b.y-tolerance&&y<=b.y+b.h+tolerance
 }
+// Drawing tools edit same-type marks only near their outline, so a box can still be drawn inside a box; text, steps and strokes hit anywhere
+function outlineHit(op,x,y,tolerance){
+    if(!hit(op,x,y,tolerance))return false
+    if(['text','step','line','arrow','freehand'].indexOf(op.type)>=0)return true
+    var b=bounds(op),t=Math.max(tolerance,Number(op.width||4))
+    if(op.type==='ellipse'){var rx=b.w/2,ry=b.h/2;if(rx<=t||ry<=t)return true;var dx=(x-b.x-rx)/rx,dy=(y-b.y-ry)/ry;return Math.abs(Math.sqrt(dx*dx+dy*dy)-1)*Math.min(rx,ry)<=t}
+    return x<=b.x+t||x>=b.x+b.w-t||y<=b.y+t||y>=b.y+b.h-t
+}
 function hitIndex(ops,x,y,tolerance){for(var i=ops.length-1;i>=0;i--)if(hit(ops[i],x,y,tolerance))return i;return -1}
 function moved(op,dx,dy){var n=clone(op);['x','x2','cx'].forEach(function(k){if(n[k]!==undefined)n[k]+=dx});['y','y2','cy'].forEach(function(k){if(n[k]!==undefined)n[k]+=dy});if(n.points)n.points=n.points.map(function(p){return{x:p.x+dx,y:p.y+dy}});return n}
 function handles(op){

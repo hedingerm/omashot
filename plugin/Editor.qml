@@ -382,7 +382,18 @@ Rectangle {
     }
     function selectAt(x, y) {
         var found = Geometry.hitIndex(operations.slice(editableStart), x, y, 8 / Math.max(.1, imageArea.sx));
-        selectedIndex = found < 0 ? -1 : found + editableStart;
+        return selectIndex(found < 0 ? -1 : found + editableStart);
+    }
+    // The topmost editable mark the current drawing tool would edit instead of drawing a new one
+    function drawToolHit(x, y) {
+        var types = tool === "pixelate" ? ["pixelate", "blur", "redact"] : [tool], tolerance = 8 / Math.max(.1, imageArea.sx);
+        for (var i = operations.length - 1; i >= editableStart; i--)
+            if (types.indexOf(operations[i].type) >= 0 && Geometry.outlineHit(operations[i], x, y, tolerance))
+                return i;
+        return -1;
+    }
+    function selectIndex(index) {
+        selectedIndex = index;
         if (selectedOperation) {
             ink = selectedOperation.color || ink;
             textSize = selectedOperation.size || textSize;
@@ -1603,7 +1614,13 @@ Rectangle {
                                     height: imageArea.parent.height
                                     enabled: !root.busy && !root.cropEditing && !root.textEditing && root.tool !== "select" && (root.liveReady || root.previewReady)
                                     visible: enabled // disabled MouseAreas still claim the cursor
-                                    cursorShape: Qt.CrossCursor
+                                    hoverEnabled: true
+                                    cursorShape: editIndex >= 0 || hoverIndex >= 0 ? Qt.SizeAllCursor : Qt.CrossCursor
+                                    // A press on a same-type mark moves it (a click on text edits it) instead of drawing
+                                    property int editIndex: -1
+                                    property int hoverIndex: -1
+                                    property bool editMoved: false
+                                    property point pressPoint
                                     property real startX: 0
                                     property real startY: 0
                                     property real endX: 0
@@ -1639,6 +1656,14 @@ Rectangle {
                                     }
                                     onPressed: function (mouse) {
                                         var p = imageArea.sourcePoint(drawArea, mouse.x, mouse.y, true);
+                                        editIndex = root.drawToolHit(p.x, p.y);
+                                        if (editIndex >= 0) {
+                                            editMoved = false;
+                                            pressPoint = Qt.point(mouse.x, mouse.y);
+                                            root.selectIndex(editIndex);
+                                            root.beginGesture(editIndex, p.x, p.y);
+                                            return;
+                                        }
                                         root.lockView();
                                         startX = endX = p.x;
                                         startY = endY = p.y;
@@ -1652,7 +1677,16 @@ Rectangle {
                                             root.draft = operation();
                                     }
                                     onPositionChanged: function (mouse) {
-                                        if (pressed) {
+                                        if (pressed && editIndex >= 0) {
+                                            editMoved = editMoved || Math.abs(mouse.x - pressPoint.x) + Math.abs(mouse.y - pressPoint.y) > 3;
+                                            if (editMoved) {
+                                                var q = imageArea.sourcePoint(drawArea, mouse.x, mouse.y, false);
+                                                root.moveGesture(q.x, q.y);
+                                            }
+                                        } else if (!pressed) {
+                                            var h = imageArea.sourcePoint(drawArea, mouse.x, mouse.y, false);
+                                            hoverIndex = root.drawToolHit(h.x, h.y);
+                                        } else {
                                             var p = imageArea.sourcePoint(drawArea, mouse.x, mouse.y, true);
                                             endX = p.x;
                                             endY = p.y;
@@ -1669,7 +1703,16 @@ Rectangle {
                                             root.noteInput("draw-move");
                                         }
                                     }
+                                    onExited: hoverIndex = -1
                                     onReleased: {
+                                        if (editIndex >= 0) {
+                                            var edited = root.operations[editIndex];
+                                            root.endGesture();
+                                            if (!editMoved && edited.type === "text")
+                                                root.editText(edited.x, edited.y, editIndex);
+                                            editIndex = -1;
+                                            return;
+                                        }
                                         var op = operation();
                                         root.draft = null;
                                         root.unlockView();
@@ -1691,6 +1734,9 @@ Rectangle {
                                         root.selectedIndex = root.operations.length - 1 - (root.backgroundOperation() ? 1 : 0);
                                     }
                                     onCanceled: {
+                                        if (editIndex >= 0)
+                                            root.endGesture();
+                                        editIndex = -1;
                                         root.draft = null;
                                         root.unlockView();
                                     }
