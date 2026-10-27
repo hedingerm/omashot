@@ -76,13 +76,15 @@ Item {
         else
             open("{}");
     }
+    // Jobs that never show the status strip: it would shrink the editor canvas and make Fit zoom jump.
+    readonly property var silentJobs: ["post-recognition-cleanup", "editor-save", "presets-save"]
     function run(args, purpose) {
         if (worker.running) {
             status = "Wait for the current operation";
             return false;
         }
         job = purpose || args[0];
-        if (purpose !== "post-recognition-cleanup")
+        if (silentJobs.indexOf(job) < 0)
             status = "Working…";
         worker.command = [backend].concat(args);
         worker.running = true;
@@ -491,7 +493,7 @@ Item {
                 return;
             }
             // Background cleanup after a failed recognition must not replace its error.
-            if (root.job !== "post-recognition-cleanup")
+            if (root.silentJobs.indexOf(root.job) < 0)
                 root.status = "Done";
             if (root.captureActionQueue.length)
                 captureActionTimer.restart();
