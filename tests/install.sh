@@ -33,7 +33,7 @@ p=pathlib.Path.home()/'.config/omarchy/shell.json';c=json.loads(p.read_text())
 assert c['bar']['layout']['right']==[{'id':'omarchy.audio'}]
 c['bar']['layout']['right'].append('omashot');p.write_text(json.dumps(c))
 PY
-# Added QML types must restart the cached host once; an ordinary update only rescans.
+# Added QML types must restart the cached host once; an update without QML changes only rescans.
 mkdir -p "$test_home/update-bin"
 cat > "$test_home/update-bin/omarchy" <<'MOCK'
 #!/usr/bin/env bash
@@ -75,6 +75,16 @@ PY_SINGLETON
 PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_home/backend"
 [[ $(grep -Ec '^omarchy restart shell$' "$TEST_UPDATE_LOG") == 3 ]]
 cmp -s "$repo/plugin/Theme.qml" "$HOME/.config/omarchy/plugins/omashot/Theme.qml"
+# A rescan keeps the host's cached Editor type, so any changed QML component restarts the host too.
+python3 - <<'PY_COMPONENT'
+import hashlib,json,pathlib
+h=pathlib.Path.home();receipt=h/'.local/share/omashot/install.json'
+v=json.loads(receipt.read_text());file=h/'.config/omarchy/plugins/omashot/Editor.qml'
+file.write_text(file.read_text()+'// older release\n');v['files'][str(file)]=hashlib.sha256(file.read_bytes()).hexdigest();receipt.write_text(json.dumps(v))
+PY_COMPONENT
+PATH="$test_home/update-bin:$PATH" "$repo/scripts/install.sh" --binary "$test_home/backend"
+[[ $(grep -Ec '^omarchy restart shell$' "$TEST_UPDATE_LOG") == 4 ]]
+cmp -s "$repo/plugin/Editor.qml" "$HOME/.config/omarchy/plugins/omashot/Editor.qml"
 
 # Capture data and unrelated files must survive uninstall. Modified installed code survives too.
 mkdir -p "$XDG_DATA_HOME/omashot"

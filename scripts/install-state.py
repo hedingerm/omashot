@@ -150,10 +150,9 @@ def install(repo, binary, reload):
             fail(f'Refusing to replace unowned file: {dest}')
         if dest.exists() and digest(dest) != owned.get(str(dest)):
             fail(f'Installed file was edited; move it aside before updating: {dest}')
-    # New types need a host restart; so do changed singletons (Theme), which survive a plugin rescan.
-    restart = bool(owned) and any((str(dest) not in owned and (dest.suffix in ['.qml', '.js'] or dest.name == 'qmldir'))
-                                  or (dest.suffix == '.qml' and dest.exists() and digest(dest) != digest(source)
-                                      and source.read_text().lstrip().startswith('pragma Singleton'))
+    # A plugin rescan reloads only the entry points; the host keeps cached types (Editor, singletons) until it restarts.
+    restart = bool(owned) and any((dest.suffix in ['.qml', '.js'] or dest.name == 'qmldir')
+                                  and (str(dest) not in owned or digest(dest) != digest(source))
                                   for dest, source in files.items())
     backup_shell()
     installed = {}
